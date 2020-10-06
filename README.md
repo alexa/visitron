@@ -1,4 +1,4 @@
-## My Project
+## VISITRON: Visual Semantics-aligned Interactively Trained Object-Navigator
 
 TODO: Fill this README out!
 
