@@ -1,17 +1,9 @@
 ## VISITRON: Visual Semantics-aligned Interactively Trained Object-Navigator
 
-TODO: Fill this README out!
-
-Be sure to:
-
-* Change the title in this README
-* Edit your repository description on GitHub
-
-## Security
-
-See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
+Contains code to train VISITRON, an [Oscar](https://github.com/microsoft/Oscar)-based agent
+for NDH/[CVDN](https://github.com/mmurray/cvdn) task.
+Work in progress.
 
 ## License
 
 This library is licensed under the MIT-0 License. See the LICENSE file.
-
