@@ -20,6 +20,6 @@
 
 
 # Except these files
-!*/
+# !*/
 !results/baseline/CVDN_train_eval_CVDN/G1/v1/steps_4/agent/sample/best_val_unseen
 !results/baseline/CVDN_train_eval_CVDN/G1/v1/steps_4/speaker/argmax/best_val_unseen
