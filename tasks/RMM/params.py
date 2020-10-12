@@ -31,7 +31,7 @@ parser.add_argument("--combined_dir", type=str, default="")
 parser.add_argument(
     "--pretrain_dir",
     type=str,
-    default="results/baseline/CVDN_train_eval_CVDN/G1/v1/steps_4",
+    default="rmm_results/baseline/CVDN_train_eval_CVDN/G1/v1/steps_4",
 )  # NDH_R2R_train_eval_NDH')
 parser.add_argument("--ver", type=str, default="v1")
 
@@ -157,7 +157,7 @@ args.pretrain_dir = args.mount_dir + args.pretrain_dir
 
 # Setup results dirs for the agent and speaker
 args.results_dir = os.path.join(
-    "results",
+    "rmm_results",
     args.mode,
     args.train_datasets + "_train_eval_" + args.eval_datasets,
     args.gpus,
