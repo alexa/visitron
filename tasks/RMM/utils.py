@@ -364,6 +364,7 @@ class GPTTokenizer(object):
         end = np.argmax(
             np.array(inst) == self.tokenizer.eos_token_id
         )  # If no <EOS>, return empty string
+        end = -1 if end == 0 else end
         if len(inst) > 1 and inst[0] == self.tokenizer.bos_token_id:
             start = 1
         else:
