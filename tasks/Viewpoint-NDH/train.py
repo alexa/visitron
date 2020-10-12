@@ -1,45 +1,35 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
+import logging
 import os
 import sys
-import logging
 import time
+from collections import defaultdict
+
 import numpy as np
 import pandas as pd
 import torch
-from params import args
-from data_loader import VLNDataset, VLNDataLoader, VLNDataloader_collate_fn
-from data_loader_lstm import (
-    LSTMVLNDataset,
-    LSTMVLNDataLoader,
-    LSTMVLNDataloader_collate_fn,
-)
-from eval import Evaluation
+import torch.distributed as dist
+from tensorboardX import SummaryWriter
+from torch.utils.data import RandomSampler, SequentialSampler
+from torch.utils.data.distributed import DistributedSampler
+from transformers.pytorch_transformers import (AdamW, BertConfig,
+                                               BertTokenizer,
+                                               WarmupConstantSchedule,
+                                               WarmupLinearSchedule,
+                                               modeling_bert)
+
 from agent import OscarAgent
 from agent_lstm import LSTMAgent
-from utils import set_seed, setup_vocab, read_vocab, Tokenizer
-from utils_model import load_oscar_model, MODEL_CLASS
-from utils_data import load_img_pickle_features, timeSince, read_img_features
-from collections import defaultdict
-
-from tensorboardX import SummaryWriter
-
-import torch.distributed as dist
-from torch.utils.data.distributed import DistributedSampler
-from torch.utils.data import (
-    RandomSampler,
-    SequentialSampler,
-)
-
-from transformers.pytorch_transformers import (
-    modeling_bert,
-    BertConfig,
-    BertTokenizer,
-    AdamW,
-    WarmupLinearSchedule,
-    WarmupConstantSchedule,
-)
+from data_loader import VLNDataLoader, VLNDataloader_collate_fn, VLNDataset
+from data_loader_lstm import (LSTMVLNDataLoader, LSTMVLNDataloader_collate_fn,
+                              LSTMVLNDataset)
+from eval import Evaluation
+from params import args
+from utils import Tokenizer, read_vocab, set_seed, setup_vocab
+from utils_data import load_img_pickle_features, read_img_features, timeSince
+from utils_model import MODEL_CLASS, load_oscar_model
 
 logger = logging.getLogger(__name__)
 
@@ -770,7 +760,7 @@ def val_attn_lstm(args, features, list_iter_no):
                 args.output_dir, "predictions", f"{env_name}-{iter_no}.json"
             )
 
-	    agent.test(use_dropout=True, feedback=args.feedback_method, allow_cheat=True)
+            agent.test(use_dropout=True, feedback=args.feedback_method, allow_cheat=True)
             val_losses = np.array(agent.losses)
             val_loss_avg = np.average(val_losses)
             tb_writer.add_scalar(f"loss/{env_name}", val_loss_avg, global_step=iter_no)
