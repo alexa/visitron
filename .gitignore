@@ -16,7 +16,7 @@
 *.pyc
 /*/__pycache__
 
-/.vscode
+.vscode
 
 # Except these files
 !*/
