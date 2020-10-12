@@ -10,8 +10,10 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
+
 # import torch.nn.functional as F
 from torch import optim
+
 # from torch.autograd import Variable
 from tqdm import tqdm
 
@@ -21,9 +23,19 @@ from eval import Evaluation
 from model import AttnDecoderLSTM, Critic, EncoderLSTM
 from params import args
 from speaker import Speaker
-from utils import (GPTTokenizer, Tokenizer, build_vocab, dialog_to_string,
-                   load, load_features, padding_idx, read_vocab, save,
-                   timeSince, write_vocab)
+from utils import (
+    GPTTokenizer,
+    Tokenizer,
+    build_vocab,
+    dialog_to_string,
+    load,
+    load_features,
+    padding_idx,
+    read_vocab,
+    save,
+    timeSince,
+    write_vocab,
+)
 
 warnings.filterwarnings("ignore")
 
@@ -349,6 +361,7 @@ def train_speaker(train_env, agent, val_envs=None, tok=None):
                 print("............ %s ............." % instr_type)
                 path2inst, loss, word_accu, sent_accu = speaker.valid(for_nav=for_nav)
                 path_id = next(iter(path2inst.keys()))
+                print("\n\n")
                 print("Inference: ", tok.decode_sentence(path2inst[path_id]))
                 print("GT: ", evaluator.gt[path_id][instr_type + "_instructions"])
                 bleu_score, precisions = evaluator.bleu_score(
