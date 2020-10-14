@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 from agent import BaseAgent, ShortestAgent, StopAgent
-from env import R2RBatch
+from env import R2RDataset
 # from params import args
 from utils import (GPTTokenizer, dialog_to_string, load_datasets,
                    load_nav_graphs)
@@ -281,13 +281,15 @@ RESULT_DIR = "tasks/NDH/results/"
 
 
 def eval_simple_agents():
+
+    assert False, "Doesn't work"
     # path_type = 'planner_path'
     # path_type = 'player_path'
     path_type = "trusted_path"
 
     """ Run simple baselines on each split. """
     for split in ["train", "val_seen", "val_unseen"]:
-        env = R2RBatch(None, batch_size=1, splits=[split], path_type=path_type)
+        env = R2RDataset(None, batch_size=1, splits=[split], path_type=path_type)
         ev = Evaluation([split], path_type=path_type)
 
         for agent_type in ["Stop", "Shortest", "Random"]:
@@ -315,6 +317,6 @@ def eval_seq2seq():
 
 
 if __name__ == "__main__":
-
-    eval_simple_agents()
+    pass
+    # eval_simple_agents()
     # eval_seq2seq()

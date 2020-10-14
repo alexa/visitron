@@ -1,5 +1,6 @@
 """ Batched Room-to-Room navigation environment """
 
+import logging
 import math
 import random
 import sys
@@ -8,11 +9,14 @@ import MatterSim
 import networkx as nx
 import numpy as np
 import torch
+from torch.utils.data import DataLoader, Dataset
 
 from params import args
 from utils import GPTTokenizer, load_datasets, load_nav_graphs
 
 sys.path.append("/opt/MatterSim/build")
+
+logger = logging.getLogger(__name__)
 
 
 class EnvBatch:
@@ -93,26 +97,21 @@ class EnvBatch:
         self.makeActions(actions)
 
 
-class R2RBatch:
-    """ Implements the Room to Room navigation task, using discretized viewpoints and pretrained features """
-
+class R2RDataset(Dataset):
     def __init__(
         self,
-        feats,
-        feats_info,
-        batch_size=100,
-        seed=10,
         splits=["train"],
         tokenizer=None,
         path_type="planner_path",
         history="target",
-        blind=False,
         datasets="NDH",
         mount_dir="",
         segmented=False,
         speaker_only=False,
+        **kwargs
     ):
-        self.env = EnvBatch(feats, feats_info, batch_size=batch_size, blind=blind)
+        super(R2RDataset, self).__init__()
+
         self.data = []
         self.scans = []
         self.tok = tokenizer
@@ -237,66 +236,68 @@ class R2RBatch:
             self.data.append(new_item)
         self.scans = set(self.scans)
         self.splits = splits
-        self.seed = seed
-        random.seed(self.seed)
-        random.shuffle(self.data)
-        self.ix = 0
-        self.batch_size = batch_size
-        self._load_nav_graphs()
-
-        def new_simulator(sim_batch_size=1):
-            # Simulator image parameters
-            WIDTH = 640
-            HEIGHT = 480
-            VFOV = 60
-            sim = MatterSim.Simulator()
-            sim.setRenderingEnabled(False)
-            sim.setCameraResolution(WIDTH, HEIGHT)
-            sim.setCameraVFOV(math.radians(VFOV))
-            sim.setDiscretizedViewingAngles(True)
-            sim.setBatchSize(sim_batch_size)
-            sim.initialize()
-            return sim
-
-        self.sim = new_simulator()
-        self.buffered_state_dict = {}
 
         self.path_type = path_type
-        print(
+        logger.info(
             "R2RBatch loaded with %d instructions, using splits: %s"
             % (len(self.data), ",".join(splits))
         )
 
-    def size(self):
+        # self.seed = seed
+        # random.seed(self.seed)
+        # random.shuffle(self.data)
+        # self.ix = 0
+        # self.batch_size = batch_size
+
+    def __len__(self):
         return len(self.data)
+
+    def __getitem__(self, index):
+        item = self.data[index]
+        return item
+
+
+def R2RDataLoader_collate_fn(batch):
+    return batch
+
+
+class R2RDataLoader(DataLoader):
+    def __init__(self, feats, feats_info, batch_size=100, blind=False, **kwargs):
+        super(R2RDataLoader, self).__init__(batch_size=batch_size, **kwargs)
+        self.env = EnvBatch(feats, feats_info, batch_size=batch_size, blind=blind)
+        self._load_nav_graphs()
+        self.sim = self._new_simulator()
+        self.buffered_state_dict = {}
+
+        self.data_iter = None
+        self.batch = None
+
+        self.reset_epoch()
+
+    def _new_simulator(self, sim_batch_size=1):
+        # Simulator image parameters
+        WIDTH = 640
+        HEIGHT = 480
+        VFOV = 60
+        sim = MatterSim.Simulator()
+        sim.setRenderingEnabled(False)
+        sim.setCameraResolution(WIDTH, HEIGHT)
+        sim.setCameraVFOV(math.radians(VFOV))
+        sim.setDiscretizedViewingAngles(True)
+        sim.setBatchSize(sim_batch_size)
+        sim.initialize()
+        return sim
 
     def _load_nav_graphs(self):
         """ Load connectivity graph for each scan, useful for reasoning about shortest paths """
-        print("Loading navigation graphs for %d scans" % len(self.scans))
-        self.graphs = load_nav_graphs(self.scans)
+        logger.info("Loading navigation graphs for %d scans" % len(self.dataset.scans))
+        self.graphs = load_nav_graphs(self.dataset.scans)
         self.paths = {}
         for scan, G in self.graphs.items():  # compute all shortest paths
             self.paths[scan] = dict(nx.all_pairs_dijkstra_path(G))
         self.distances = {}
         for scan, G in self.graphs.items():  # compute all shortest paths
             self.distances[scan] = dict(nx.all_pairs_dijkstra_path_length(G))
-
-    def _next_minibatch(self):
-        batch = self.data[self.ix : self.ix + self.batch_size]
-        if len(batch) < self.batch_size:
-            random.shuffle(self.data)
-            self.ix = self.batch_size - len(batch)
-            batch += self.data[: self.ix]
-        else:
-            self.ix += self.batch_size
-        self.batch = batch
-
-    def reset_epoch(self, shuffle=False):
-        """Reset the data index to beginning of epoch. Primarily for testing.
-        You must still call reset() for a new episode."""
-        if shuffle:
-            random.shuffle(self.data)
-        self.ix = 0
 
     def _shortest_path_action(self, state, goalViewpointId):
         """ Determine next action on the shortest path to goal, for supervised training. """
@@ -446,35 +447,60 @@ class R2RBatch:
                     "navigableLocations": state.navigableLocations,
                     "instructions": item["instructions"],
                     "teacher": self._shortest_path_action(
-                        state, item[self.path_type][-1]
+                        state, item[self.dataset.path_type][-1]
                     ),
                     "generated_dialog_history": [],
                     "action_probs": [],
                 }
             )
+            flag = isinstance(self.dataset.tok, GPTTokenizer)
+
             if "instr_encoding" in item:
                 obs[-1]["instr_encoding"] = item["instr_encoding"]
-                if isinstance(self.tok, GPTTokenizer):
+                if flag:
                     obs[-1]["instr_mask"] = item["instr_mask"]
             if "nav_instr_encoding" in item:
                 obs[-1]["nav_instr_encoding"] = item["nav_instr_encoding"]
-                if isinstance(self.tok, GPTTokenizer):
+                if flag:
                     obs[-1]["nav_instr_mask"] = item["nav_instr_mask"]
             if "ora_instr_encoding" in item:
                 obs[-1]["ora_instr_encoding"] = item["ora_instr_encoding"]
-                if isinstance(self.tok, GPTTokenizer):
+                if flag:
                     obs[-1]["ora_instr_mask"] = item["ora_instr_mask"]
             obs[-1]["distance"] = self.distances[state.scanId][
                 state.location.viewpointId
-            ][item[self.path_type][-1]]
+            ][item[self.dataset.path_type][-1]]
         return obs
+
+    def _sample_items(self):
+        try:
+            batch = next(self.data_iter)
+        except StopIteration:
+            self.data_iter = self.__iter__()
+            batch = next(self.data_iter)
+        return batch
+
+    def _next_minibatch(self):
+        self.batch = self._sample_items()
+
+        if len(self.batch) != self.batch_size:
+            extra_batch = self._sample_items()
+            new_batch = self.batch + extra_batch[: self.batch_size - len(self.batch)]
+            assert len(new_batch) == self.batch_size
+            self.batch = new_batch
+
+    def reset_epoch(self):
+        """Reset the data index to beginning of epoch. Primarily for testing.
+        You must still call reset() for a new episode."""
+        self.data_iter = self.__iter__()
+        self.batch = None
 
     def reset(self, next_minibatch=True):
         """ Load a new minibatch / episodes. """
         if next_minibatch:
             self._next_minibatch()
         scanIds = [item["scan"] for item in self.batch]
-        viewpointIds = [item[self.path_type][0] for item in self.batch]
+        viewpointIds = [item[self.dataset.path_type][0] for item in self.batch]
         headings = [item["start_pano"]["heading"] for item in self.batch]
         self.env.newEpisodes(scanIds, viewpointIds, headings)
         return self._get_obs()
@@ -485,7 +511,7 @@ class R2RBatch:
         return self._get_obs()
 
     def random_start(self, J=0):
-        viewpointIds = [item[self.path_type][0] for item in self.batch]
+        viewpointIds = [item[self.dataset.path_type][0] for item in self.batch]
         for j in range(J):
             ids = []
             for i, (feature, state) in enumerate(self.env.getStates()):
@@ -496,5 +522,5 @@ class R2RBatch:
 
     def reset_viewpointIds(self, viewpointIds):
         for i, id in enumerate(viewpointIds):
-            self.batch[i][self.path_type][0] = id
+            self.batch[i][self.dataset.path_type][0] = id
         self.reset(next_minibatch=False)

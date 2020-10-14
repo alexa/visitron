@@ -5,6 +5,7 @@
 /MatterSim
 /models
 /results
+/rmm_results
 /snap
 /tasks/CVDN/data/*json*
 /tasks/NDH/data/*json*

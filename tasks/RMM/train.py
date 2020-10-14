@@ -1,4 +1,5 @@
 import copy
+import logging
 import os
 import random
 import sys
@@ -13,12 +14,14 @@ import torch.nn as nn
 
 # import torch.nn.functional as F
 from torch import optim
+from torch.utils.data import RandomSampler, SequentialSampler
+from torch.utils.data.distributed import DistributedSampler
 
 # from torch.autograd import Variable
 from tqdm import tqdm
 
 from agent import Seq2SeqAgent
-from env import R2RBatch
+from env import R2RDataLoader, R2RDataLoader_collate_fn, R2RDataset
 from eval import Evaluation
 from model import AttnDecoderLSTM, Critic, EncoderLSTM
 from params import args
@@ -39,8 +42,9 @@ from utils import (
 
 warnings.filterwarnings("ignore")
 
+logger = logging.getLogger(__name__)
 
-print(args)  # Print finalized args
+logger.info(args)  # Print finalized args
 
 """ Train on training set, validating on both seen and unseen. """
 
@@ -297,9 +301,9 @@ def train(train_env, agent, val_envs={}, tok=None):
                 )
 
 
-def train_speaker(train_env, agent, val_envs=None, tok=None):
+def train_speaker(train_data_loader, agent, val_envs=None, tok=None):
     speaker = Speaker(
-        train_env,
+        train_data_loader,
         agent,
         decoder=args.speaker_decoder,
         feedback=args.speaker_feedback_method,
@@ -308,20 +312,22 @@ def train_speaker(train_env, agent, val_envs=None, tok=None):
         tokenizer=tok,
     )
 
-    # Set up to save best model
-    start_iter, best_iter = 0, 0
-    best_bleu = defaultdict(lambda: 0)
-    # best_loss = defaultdict(lambda: 1232)
-    data_log = defaultdict(list)
-    best_model = {
-        "iter": 0,
-        "encoder": copy.deepcopy(speaker.encoder),
-        "encoder_optm": copy.deepcopy(speaker.encoder_optimizer),
-        "decoder": copy.deepcopy(speaker.decoder),
-        "decoder_optm": copy.deepcopy(speaker.decoder_optimizer),
-    }
-    if not os.path.isdir(args.speaker_results_dir):
-        os.makedirs(args.speaker_results_dir)
+    if args.local_rank in [-2, -1, 0]:
+        # Set up to save best model
+        start_iter, best_iter = 0, 0
+        best_bleu = defaultdict(lambda: 0)
+        # best_loss = defaultdict(lambda: 1232)
+
+        data_log = defaultdict(list)
+        best_model = {
+            "iter": 0,
+            "encoder": copy.deepcopy(speaker.encoder),
+            "encoder_optm": copy.deepcopy(speaker.encoder_optimizer),
+            "decoder": copy.deepcopy(speaker.decoder),
+            "decoder_optm": copy.deepcopy(speaker.decoder_optimizer),
+        }
+        if not os.path.isdir(args.speaker_results_dir):
+            os.makedirs(args.speaker_results_dir)
 
     # Load previous partial work or pre-train
     if args.rw_results and os.path.isfile(args.saved_speaker_model_file):
@@ -340,94 +346,109 @@ def train_speaker(train_env, agent, val_envs=None, tok=None):
     ):
         interval = min(args.log_every, args.N_ITERS - idx)
         iteration = idx + interval
-        data_log["iteration"].append(iteration)
-        bleu_unseen = 0
+        if args.local_rank in [-2, -1, 0]:
+            data_log["iteration"].append(iteration)
+            bleu_unseen = 0
 
         # Train for log_every interval
-        speaker.env = train_env
+        speaker.env = train_data_loader
         speaker.train(1, train_nav=True)  # Train nav
         speaker.train(interval)  # Train ora
 
-        print("Iter: %d" % idx)
+        logger.info("Iter: %d" % idx)
+        import pdb
 
-        # Evaluation
-        for env_name, (env, evaluator) in val_envs.items():
-            if "train" in env_name:  # Ignore the large training set for the efficiency
-                continue
-            print("............ Evaluating %s ............." % env_name)
-            speaker.env = env
-            for instr_type in ["nav", "ora"]:
-                for_nav = instr_type == "nav"
-                print("............ %s ............." % instr_type)
-                path2inst, loss, word_accu, sent_accu = speaker.valid(for_nav=for_nav)
-                path_id = next(iter(path2inst.keys()))
-                print("\n\n")
-                print("Inference: ", tok.decode_sentence(path2inst[path_id]))
-                print("GT: ", evaluator.gt[path_id][instr_type + "_instructions"])
-                bleu_score, precisions = evaluator.bleu_score(
-                    path2inst, tok=tok, for_nav=for_nav
-                )
+        pdb.set_trace()
+        if args.local_rank in [-2, -1, 0]:
+            # Evaluation
+            for env_name, (env, evaluator) in val_envs.items():
+                if (
+                    "train" in env_name
+                ):  # Ignore the large training set for the efficiency
+                    continue
+                logger.info("............ Evaluating %s ............." % env_name)
 
-                if not for_nav:
-                    data_log["%s bleu" % (env_name)].append(bleu_score)
-                    data_log["%s loss" % (env_name)].append(loss)
+                speaker.env = env
+                for instr_type in ["nav", "ora"]:
+                    for_nav = instr_type == "nav"
+                    logger.info("............ %s ............." % instr_type)
+                    path2inst, loss, word_accu, sent_accu = speaker.valid(
+                        for_nav=for_nav
+                    )
+                    path_id = next(iter(path2inst.keys()))
+                    logger.info("\n\n")
+                    logger.info("Inference: ", tok.decode_sentence(path2inst[path_id]))
+                    logger.info(
+                        "GT: ", evaluator.gt[path_id][instr_type + "_instructions"]
+                    )
+                    bleu_score, precisions = evaluator.bleu_score(
+                        path2inst, tok=tok, for_nav=for_nav
+                    )
 
-                    # Save the model according to the bleu score
-                    if bleu_score > best_bleu[env_name]:
-                        best_bleu[env_name] = bleu_score
-                        if env_name == "val_unseen":
-                            print(
-                                "Save the model with %s BEST env bleu %0.4f"
-                                % (env_name, bleu_score)
-                            )
-                            bleu_unseen = bleu_score
-                            best_iter = iteration
-                            best_model = {
-                                "iter": iteration,
-                                "encoder": copy.deepcopy(speaker.encoder),
-                                "encoder_optm": copy.deepcopy(
-                                    speaker.encoder_optimizer
-                                ),
-                                "decoder": copy.deepcopy(speaker.decoder),
-                                "decoder_optm": copy.deepcopy(
-                                    speaker.decoder_optimizer
-                                ),
-                            }
+                    if not for_nav:
+                        data_log["%s bleu" % (env_name)].append(bleu_score)
+                        data_log["%s loss" % (env_name)].append(loss)
 
-                # Screen print out
-                print("Bleu Score: %0.4f " % (bleu_score))
-                print(
-                    "Bleu 1: %0.4f Bleu 2: %0.4f, Bleu 3 :%0.4f,  Bleu 4: %0.4f"
-                    % tuple(precisions)
-                )
+                        # Save the model according to the bleu score
+                        if bleu_score > best_bleu[env_name]:
+                            best_bleu[env_name] = bleu_score
+                            if env_name == "val_unseen":
+                                logger.info(
+                                    "Save the model with %s BEST env bleu %0.4f"
+                                    % (env_name, bleu_score)
+                                )
+                                bleu_unseen = bleu_score
+                                best_iter = iteration
+                                best_model = {
+                                    "iter": iteration,
+                                    "encoder": copy.deepcopy(speaker.encoder),
+                                    "encoder_optm": copy.deepcopy(
+                                        speaker.encoder_optimizer
+                                    ),
+                                    "decoder": copy.deepcopy(speaker.decoder),
+                                    "decoder_optm": copy.deepcopy(
+                                        speaker.decoder_optimizer
+                                    ),
+                                }
 
-        print("PROGRESS: {}%".format(float(iteration) / args.N_ITERS * 100))
-        print("EVALERR: {}%".format(bleu_unseen * 100))
+                    # Screen print out
+                    logger.info("Bleu Score: %0.4f " % (bleu_score))
+                    logger.info(
+                        "Bleu 1: %0.4f Bleu 2: %0.4f, Bleu 3 :%0.4f,  Bleu 4: %0.4f"
+                        % tuple(precisions)
+                    )
 
-        # Save results
-        df = pd.DataFrame(data_log)
-        df.set_index("iteration")
-        df_path = args.speaker_results_dir + "/log.csv"
-        df.to_csv(df_path)
-        save(
-            best_model,
-            best_iter,
-            iteration,
-            args.speaker_results_dir + "/best_val_unseen",
-        )
+            logger.info("PROGRESS: {}%".format(float(iteration) / args.N_ITERS * 100))
+            logger.info("EVALERR: {}%".format(bleu_unseen * 100))
+
+            # Save results
+            df = pd.DataFrame(data_log)
+            df.set_index("iteration")
+            df_path = args.speaker_results_dir + "/log.csv"
+            df.to_csv(df_path)
+            save(
+                best_model,
+                best_iter,
+                iteration,
+                args.speaker_results_dir + "/best_val_unseen",
+            )
 
 
 def setup():
-    torch.manual_seed(1)
-    if args.device == "cuda":
-        torch.cuda.manual_seed(1)
-    # Check for vocabs
-    if not os.path.exists(args.train_vocab):
-        write_vocab(build_vocab(splits=["train"]), args.train_vocab)
-    if not os.path.exists(args.trainval_vocab):
-        write_vocab(
-            build_vocab(splits=["train", "val_seen", "val_unseen"]), args.trainval_vocab
-        )
+    logger.info(f"Setting random seed: {args.seed}")
+    torch.manual_seed(args.seed)
+    if args.local_rank != -2:
+        logger.info(f"Setting CUDA random seed: {args.seed}")
+        torch.cuda.manual_seed(args.seed)
+    if args.local_rank in [-2, -1, 0]:
+        # Check for vocabs
+        if not os.path.exists(args.train_vocab):
+            write_vocab(build_vocab(splits=["train"]), args.train_vocab)
+        if not os.path.exists(args.trainval_vocab):
+            write_vocab(
+                build_vocab(splits=["train", "val_seen", "val_unseen"]),
+                args.trainval_vocab,
+            )
 
 
 def test_submission():
@@ -520,39 +541,53 @@ def train_val(use_test_split=False):
         vocab = read_vocab(args.train_vocab)
         tok = Tokenizer(vocab=vocab, encoding_length=args.MAX_INPUT_LENGTH)
     feats, feats_info = load_features(args.FEATURES, args.blind, debug=args.debug)
-    train_env = R2RBatch(
-        feats,
-        feats_info,
-        batch_size=args.BATCH_SIZE,
+
+    train_dataset = R2RDataset(
         splits=train_splits,
         tokenizer=tok,
         path_type=args.path_type,
         history=args.history,
-        blind=args.blind,
         datasets=args.train_datasets,
         mount_dir=args.mount_dir,
         segmented=args.segmented,
         speaker_only=args.speaker_only,
     )
 
-    # Create validation environments
-    val_envs = {
-        split: (
-            R2RBatch(
-                feats,
-                feats_info,
-                batch_size=args.BATCH_SIZE,
+    args.train_batch_size = args.BATCH_SIZE * max(1, args.n_gpu)
+    train_sampler = (
+        RandomSampler(train_dataset)
+        if args.local_rank in [-2, -1]
+        else DistributedSampler(train_dataset)
+    )
+
+    train_data_loader = R2RDataLoader(
+        dataset=train_dataset,
+        feats=feats,
+        feats_info=feats_info,
+        batch_size=args.train_batch_size,
+        blind=args.blind,
+        collate_fn=R2RDataLoader_collate_fn,
+        sampler=train_sampler,
+        num_workers=args.num_workers,
+        pin_memory=True,
+        drop_last=True,
+    )
+
+    val_envs = {}
+    if args.local_rank in [-2, -1, 0]:
+        # Create validation environments
+        for split in val_splits:
+            val_dataset = R2RDataset(
                 splits=[split],
                 tokenizer=tok,
                 path_type=args.path_type,
                 history=args.history,
-                blind=args.blind,
                 datasets=args.eval_datasets,
                 mount_dir=args.mount_dir,
                 segmented=args.segmented,
                 speaker_only=args.speaker_only,
-            ),
-            Evaluation(
+            )
+            evaluator = Evaluation(
                 [split],
                 path_type=args.path_type,
                 datasets=args.eval_datasets,
@@ -561,11 +596,22 @@ def train_val(use_test_split=False):
                 speaker_only=args.speaker_only,
                 results_dir=args.agent_results_dir,
                 steps_to_next_q=args.steps_to_next_q,
-            ),
-        )
-        for split in val_splits
-    }
+            )
 
+            val_sampler = SequentialSampler(val_dataset)
+            val_data_loader = R2RDataLoader(
+                dataset=val_dataset,
+                feats=feats,
+                feats_info=feats_info,
+                batch_size=args.BATCH_SIZE,
+                blind=args.blind,
+                collate_fn=R2RDataLoader_collate_fn,
+                sampler=val_sampler,
+                num_workers=args.num_workers,
+                pin_memory=True,
+                drop_last=False,
+            )
+            val_envs[split] = (val_data_loader, evaluator)
     # Build models and train
     enc_hidden_size = args.HIDDEN_SIZE // 2 if args.BIDIRECTIONAL else args.HIDDEN_SIZE
     encoder = EncoderLSTM(
@@ -583,6 +629,24 @@ def train_val(use_test_split=False):
         args.HIDDEN_SIZE,
         args.DROPOUT_RATIO,
     ).to(args.device)
+
+    if args.n_gpu > 1:
+        encoder = torch.nn.DataParallel(encoder)
+        decoder = torch.nn.DataParallel(decoder)
+
+    if args.local_rank not in [-2, -1]:
+        encoder = torch.nn.parallel.DistributedDataParallel(
+            encoder,
+            device_ids=[args.local_rank],
+            output_device=args.local_rank,
+            find_unused_parameters=True,
+        )
+        decoder = torch.nn.parallel.DistributedDataParallel(
+            decoder,
+            device_ids=[args.local_rank],
+            output_device=args.local_rank,
+            find_unused_parameters=True,
+        )
     encoder_optimizer = optim.Adam(
         encoder.parameters(), lr=args.LEARNING_RATE, weight_decay=args.WEIGHT_DECAY
     )
@@ -590,14 +654,19 @@ def train_val(use_test_split=False):
         decoder.parameters(), lr=args.LEARNING_RATE, weight_decay=args.WEIGHT_DECAY
     )
 
-    if args.parallelize:
-        encoder = nn.DataParallel(encoder).to(args.device)
-        decoder = nn.DataParallel(decoder).to(args.device)
-
     # Create the follower agent
     agent = None
     if args.AGENT_TYPE == "seq2seq":
         critic = None if not args.agent_rl else Critic().to(args.device)
+        if args.n_gpu > 1:
+            critic = torch.nn.DataParallel(critic)
+        if args.local_rank not in [-2, -1]:
+            critic = torch.nn.parallel.DistributedDataParallel(
+                critic,
+                device_ids=[args.local_rank],
+                output_device=args.local_rank,
+                find_unused_parameters=True,
+            )
         critic_optimizer = (
             None
             if not args.agent_rl
@@ -608,7 +677,7 @@ def train_val(use_test_split=False):
             )
         )
         agent = Seq2SeqAgent(
-            train_env,
+            train_data_loader,
             "",
             encoder,
             encoder_optimizer,
@@ -633,19 +702,26 @@ def train_val(use_test_split=False):
         sys.exit("Unrecognized agent_type '%s'" % args.AGENT_TYPE)
 
     if args.speaker_only:
-        print("Training a speaker with %s feedback" % (args.speaker_feedback_method))
-        train_speaker(train_env, agent, val_envs, tok)
+        logger.info(
+            "Training a speaker with %s feedback" % (args.speaker_feedback_method)
+        )
+        train_speaker(train_data_loader, agent, val_envs, tok)
     else:
-        print(
+        logger.info(
             "Training a %s agent with %s feedback"
             % (args.AGENT_TYPE, args.agent_feedback_method)
         )
-        train(train_env, agent, val_envs, tok)
+        train(train_data_loader, agent, val_envs, tok)
 
 
-if __name__ == "__main__":
+def main():
+
     if args.eval_type == "val":
         train_val()
     else:
         train_val(use_test_split=True)
     # test_submission()
+
+
+if __name__ == "__main__":
+    main()

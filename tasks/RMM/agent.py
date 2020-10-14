@@ -7,11 +7,9 @@ import random
 
 import numpy as np
 import torch
-
 # import torch.distributions as D
 import torch.nn as nn
 import torch.nn.functional as F
-
 # from torch import optim
 from torch.autograd import Variable
 
@@ -26,8 +24,8 @@ from utils import copy_dialog_history, next_decoder_input, padding_idx
 class BaseAgent(object):
     """ Base class for an R2R agent to generate and save trajectories. """
 
-    def __init__(self, env, results_path, turn_based=False, eval_branching=1):
-        self.env = env
+    def __init__(self, dataloader, results_path, turn_based=False, eval_branching=1):
+        self.dataloader = dataloader
         self.results_path = results_path
         random.seed(1)
         self.results = {}
@@ -69,7 +67,7 @@ class BaseAgent(object):
         return globals()[name + "Agent"]
 
     def test(self):
-        self.env.reset_epoch()
+        self.dataloader.reset_epoch()
         self.losses = []
         self.results = {}
         self.generated_dialog = {}
@@ -116,7 +114,7 @@ class StopAgent(BaseAgent):
                 "inst_idx": ob["inst_idx"],
                 "path": [(ob["viewpoint"], ob["heading"], ob["elevation"])],
             }
-            for ob in self.env.reset()
+            for ob in self.dataloader.reset()
         ]
         return traj
 
@@ -126,7 +124,7 @@ class RandomAgent(BaseAgent):
     five viewpoint steps and then stops."""
 
     def rollout(self):
-        obs = self.env.reset()
+        obs = self.dataloader.reset()
         traj = [
             {
                 "inst_idx": ob["inst_idx"],
@@ -151,7 +149,7 @@ class RandomAgent(BaseAgent):
                     self.steps[i] += 1
                 else:
                     actions.append((0, 1, 0))  # turn right until we can go forward
-            obs = self.env.step(actions)
+            obs = self.dataloader.step(actions)
             for i, ob in enumerate(obs):
                 if not ended[i]:
                     traj[i]["path"].append(
@@ -164,7 +162,7 @@ class ShortestAgent(BaseAgent):
     """ An agent that always takes the shortest path to goal. """
 
     def rollout(self):
-        obs = self.env.reset()
+        obs = self.dataloader.reset()
         traj = [
             {
                 "inst_idx": ob["inst_idx"],
@@ -175,7 +173,7 @@ class ShortestAgent(BaseAgent):
         ended = np.array([False] * len(obs))
         while True:
             actions = [ob["teacher"] for ob in obs]
-            obs = self.env.step(actions)
+            obs = self.dataloader.step(actions)
             for i, a in enumerate(actions):
                 if a == (0, 0, 0):
                     ended[i] = True
@@ -227,7 +225,7 @@ class Seq2SeqAgent(BaseAgent):
 
     def __init__(
         self,
-        env,
+        dataloader,
         results_path,
         encoder,
         encoder_optimizer,
@@ -252,7 +250,7 @@ class Seq2SeqAgent(BaseAgent):
         action_probs_branching=False,
     ):
         super(Seq2SeqAgent, self).__init__(
-            env, results_path, turn_based, eval_branching=eval_branching
+            dataloader, results_path, turn_based, eval_branching=eval_branching
         )
         self.encoder = encoder
         self.encoder_optimizer = encoder_optimizer
@@ -272,14 +270,14 @@ class Seq2SeqAgent(BaseAgent):
         self.steps_to_next_q = steps_to_next_q
 
         self.env_actions_instructions = [
-            self.env.tok.word_to_index("left"),  # left
-            self.env.tok.word_to_index("right"),  # right
-            self.env.tok.word_to_index("up"),  # up
-            self.env.tok.word_to_index("down"),  # down
-            self.env.tok.word_to_index("forward"),  # forward
-            self.env.tok.word_to_index("stop"),  # <end>
-            self.env.tok.word_to_index("start"),  # <start>
-            self.env.tok.word_to_index("<PAD>"),  # <ignore>
+            self.dataloader.dataset.tok.word_to_index("left"),  # left
+            self.dataloader.dataset.tok.word_to_index("right"),  # right
+            self.dataloader.dataset.tok.word_to_index("up"),  # up
+            self.dataloader.dataset.tok.word_to_index("down"),  # down
+            self.dataloader.dataset.tok.word_to_index("forward"),  # forward
+            self.dataloader.dataset.tok.word_to_index("stop"),  # <end>
+            self.dataloader.dataset.tok.word_to_index("start"),  # <start>
+            self.dataloader.dataset.tok.word_to_index("<PAD>"),  # <ignore>
         ]
 
         self.critic = critic
@@ -403,22 +401,22 @@ class Seq2SeqAgent(BaseAgent):
         ) = (None, None, None, None, None, None, None, None, None, None)
         if not reset:
             if prev_all_env_action is not None:
-                self.env.reset(next_minibatch=False)
+                self.dataloader.reset(next_minibatch=False)
                 for env_act in prev_all_env_action:
-                    self.env.step(env_act)
+                    self.dataloader.step(env_act)
             if prev_obs is not None:
                 obs = np.array(copy_dialog_history(prev_obs))
                 perm_obs = obs
                 perm_idx = copy.deepcopy(used_perm_idx)
             else:
-                obs = np.array(self.env._get_obs())
+                obs = np.array(self.dataloader._get_obs())
                 # Reorder the language input for the encoder
                 seq, seq_mask, seq_lengths, perm_idx = self._sort_batch(obs)
                 perm_obs = obs[perm_idx]
                 # Forward through encoder, giving initial hidden state and memory cell for decoder
                 ctx, h_t, c_t = self.encoder(seq, seq_lengths)
         else:
-            obs = np.array(self.env.reset())
+            obs = np.array(self.dataloader.reset())
             seq, seq_mask, seq_lengths, perm_idx = self._sort_batch(obs)
             perm_obs = obs[perm_idx]
             ctx, h_t, c_t = self.encoder(seq, seq_lengths)
@@ -501,7 +499,7 @@ class Seq2SeqAgent(BaseAgent):
                 help_requesters = set([])
                 if not help_already_given:
                     for i, ob in enumerate(perm_obs):
-                        item = self.env.batch[perm_idx[i]]
+                        item = self.dataloader.batch[perm_idx[i]]
                         time_step = t - self.J
                         if train and time_step in item["request_locations"]:
                             help_needed = True
@@ -510,11 +508,11 @@ class Seq2SeqAgent(BaseAgent):
                             ]
                             # real = [m['message'] for m in item['dialog_history'][:end_index][-2:]]
                             item["nav_instructions"] = nav_ins
-                            item["nav_instr_encoding"] = self.env.tok.encode_sentence(
+                            item["nav_instr_encoding"] = self.dataloader.dataset.tok.encode_sentence(
                                 item["nav_instructions"], seps="<NAV>"
                             )
                             item["ora_instructions"] = ora_ins
-                            item["ora_instr_encoding"] = self.env.tok.encode_sentence(
+                            item["ora_instr_encoding"] = self.dataloader.dataset.tok.encode_sentence(
                                 item["ora_instructions"], seps="<ORA>"
                             )
                             help_requesters.add(i)
@@ -529,7 +527,7 @@ class Seq2SeqAgent(BaseAgent):
                     # print("Episode %d" % t)
                     # nav_ora_generated = []
                     # if self.speaker is not None and self.feedback == 'argmax':
-                    self.speaker.env = self.env
+                    self.speaker.dataloader = self.dataloader
                     # print("Generating QA at %d" % t)
                     if not help_already_given:
                         if "cuda" in args.device:
@@ -627,7 +625,7 @@ class Seq2SeqAgent(BaseAgent):
                     #     nav_ora_generated.append(generated_turn)
 
                     for i, ob in enumerate(perm_obs):
-                        item = self.env.batch[perm_idx[i]]
+                        item = self.dataloader.batch[perm_idx[i]]
                         time_step = t - self.J
                         ask_spot = (
                             not train
@@ -672,7 +670,7 @@ class Seq2SeqAgent(BaseAgent):
                             seps.append("<TAR>")
                             dia_inst += "<TAR> " + item["target"]
                             ob["instructions"] = dia_inst
-                            dia_enc = self.env.tok.encode_sentence(sentences, seps=seps)
+                            dia_enc = self.dataloader.dataset.tok.encode_sentence(sentences, seps=seps)
                             ob["instr_encoding"] = dia_enc
                             resort_needed = True
                             if "cuda" in args.device:
@@ -760,7 +758,7 @@ class Seq2SeqAgent(BaseAgent):
             # print "a_t"
             # print env_action
 
-            obs = np.array(self.env.step(env_action))
+            obs = np.array(self.dataloader.step(env_action))
             if self.turn_based:
                 prev_perm_obs = [x for x in perm_obs]
                 perm_obs = obs[perm_idx]  # Perm the obs for the resu
@@ -938,9 +936,9 @@ class Seq2SeqAgent(BaseAgent):
                 losses = [x for x in self.losses]
                 self.encoder_optimizer.zero_grad()
                 self.decoder_optimizer.zero_grad()
-                viewpointIds = self.env.random_start(self.J)
+                viewpointIds = self.dataloader.random_start(self.J)
                 self.rollout(reset=False)
-                self.env.reset_viewpointIds(viewpointIds)
+                self.dataloader.reset_viewpointIds(viewpointIds)
                 self.loss.backward()
                 self.encoder_optimizer.step()
                 self.decoder_optimizer.step()

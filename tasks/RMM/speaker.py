@@ -2,6 +2,7 @@ import os
 
 import numpy as np
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
@@ -27,7 +28,7 @@ class Speaker:
 
     def __init__(
         self,
-        env,
+        dataloader,
         agent,
         decoder="lstm",
         rnn_dim=512,
@@ -43,9 +44,9 @@ class Speaker:
         speaker_rl=False,
         tokenizer=None,
     ):
-        self.env = env
-        self.feature_size = self.env.env.feature_size
-        self.env.tok.finalize()
+        self.dataloader = dataloader
+        self.feature_size = self.dataloader.env.feature_size
+        self.dataloader.dataset.tok.finalize()
         self.agent = agent
         self.helper_agent = None
         self.asker_oracle = None
@@ -59,7 +60,7 @@ class Speaker:
         self.decoder_name = decoder
 
         # Model
-        print("VOCAB_SIZE", self.env.tok.vocab_size())
+        print("VOCAB_SIZE", self.dataloader.dataset.tok.vocab_size())
         self.encoder = model.SpeakerEncoder(
             self.feature_size, rnn_dim, dropout, bidirectional=bidir
         ).to(args.device)
@@ -73,14 +74,14 @@ class Speaker:
                 self.config,
                 tokenizer,
                 rnn_dim,
-                self.env.tok.word_to_index("<PAD>"),
+                self.dataloader.dataset.tok.word_to_index("<PAD>"),
                 dropout,
             ).to(args.device)
         else:
             self.decoder = model.SpeakerDecoder(
-                self.env.tok.vocab_size(),
+                self.dataloader.dataset.tok.vocab_size(),
                 wemb,
-                self.env.tok.word_to_index("<PAD>"),
+                self.dataloader.dataset.tok.word_to_index("<PAD>"),
                 rnn_dim,
                 dropout,
             ).to(args.device)
@@ -92,12 +93,13 @@ class Speaker:
 
         # Evaluation
         self.softmax_loss = torch.nn.CrossEntropyLoss(
-            ignore_index=self.env.tok.word_to_index("<PAD>"), reduction="none"
+            ignore_index=self.dataloader.dataset.tok.word_to_index("<PAD>"),
+            reduction="none",
         )
 
         # Will be used in beam search
         self.nonreduced_softmax_loss = torch.nn.CrossEntropyLoss(
-            ignore_index=self.env.tok.word_to_index("<PAD>"),
+            ignore_index=self.dataloader.dataset.tok.word_to_index("<PAD>"),
             size_average=False,
             reduce=False,
         )
@@ -132,14 +134,14 @@ class Speaker:
             range(iters), desc="Train Loop: %s" % ("NAV" if train_nav else "ORA")
         ):
             if do_reset:
-                self.env.reset()
+                self.dataloader.reset()
 
             self.encoder_optimizer.zero_grad()
             self.decoder_optimizer.zero_grad()
 
             (
                 follower_distance,
-                loss,
+                self.loss,
                 agent_loss,
                 rl_loss,
                 traj,
@@ -167,8 +169,13 @@ class Speaker:
                 prev_ml_loss=prev_ml_loss,
                 train_rl=train_rl,
             )
+            if args.n_gpu > 1:
+                pass  # already reduced
+            elif args.local_rank not in [-2, -1]:
+                self.loss /= dist.get_world_size()
+                dist.all_reduce(self.loss, op=dist.ReduceOp.SUM)
 
-            loss.backward()
+            self.loss.backward()
             torch.nn.utils.clip_grad_norm(self.encoder.parameters(), 40.0)
             torch.nn.utils.clip_grad_norm(self.decoder.parameters(), 40.0)
             self.encoder_optimizer.step()
@@ -178,18 +185,23 @@ class Speaker:
 
     def get_insts(self, for_nav=False):
         # Get the caption for all the data
-        self.env.reset_epoch(shuffle=True)
+        self.dataloader.reset_epoch()
         path2inst = {}
-        total = self.env.size()
+        total = len(self.dataloader.dataset)
+        import pdb
+
+        pdb.set_trace()
         for _ in tqdm(
-            range(total // self.env.batch_size + 1), desc="Val Loop"
+            range(total // self.dataloader.batch_size + 1), desc="Val Loop"
         ):  # Guarantee that all the data are processed
-            obs = self.env.reset()
+            obs = self.dataloader.reset()
             insts, _ = self.infer_batch(for_nav=for_nav)  # Get the insts of the result
             path_ids = [ob["inst_idx"] for ob in obs]  # Gather the path ids
             for path_id, inst in zip(path_ids, insts):
                 if path_id not in path2inst:
-                    path2inst[path_id] = self.env.tok.shrink(inst)  # Shrink the words
+                    path2inst[path_id] = self.dataloader.dataset.tok.shrink(
+                        inst
+                    )  # Shrink the words
         return path2inst
 
     def valid(self, for_nav=False, *aargs, **kwargs):
@@ -204,11 +216,11 @@ class Speaker:
         path2inst = self.get_insts(for_nav=for_nav, *aargs, **kwargs)
 
         # Calculate the teacher-forcing metrics
-        self.env.reset_epoch(shuffle=True)
+        self.dataloader.reset_epoch()
         N = 1
         metrics = np.zeros(3)
         for i in range(N):
-            self.env.reset()
+            self.dataloader.reset()
             metrics += np.array(self.teacher_forcing(train=False, for_nav=for_nav))
         metrics /= N
 
@@ -231,7 +243,7 @@ class Speaker:
         """
         :return:
         """
-        obs = self.env._get_obs()
+        obs = self.dataloader._get_obs()
         ended = np.array(
             [False] * len(obs)
         )  # Indices match permuation of the model, not env
@@ -246,7 +258,9 @@ class Speaker:
             teacher_action = self.agent._teacher_action(obs, ended)
             teacher_action = teacher_action.cpu().numpy()
             can_feats.append(self._candidate_variable(obs, teacher_action))
-            self.env.step([self.agent.env_actions[action] for action in teacher_action])
+            self.dataloader.step(
+                [self.agent.env_actions[action] for action in teacher_action]
+            )
             ints = np.array(
                 [
                     self.agent.env_actions_instructions[action]
@@ -260,7 +274,7 @@ class Speaker:
             ended[:] = np.logical_or(
                 ended, (teacher_action == self.agent.model_actions.index("<end>"))
             )
-            obs = self.env._get_obs()
+            obs = self.dataloader._get_obs()
             count += 1
         img_feats = torch.stack(
             img_feats, 1
@@ -326,7 +340,7 @@ class Speaker:
             self.decoder.eval()
 
         # Get Image Input & Encode
-        obs = self.env._get_obs()
+        obs = self.dataloader._get_obs()
         if features is not None:
             # It is used in calulating the speaker score in beam-search
             assert insts is not None
@@ -337,9 +351,9 @@ class Speaker:
             batch_size = len(obs)
             if not for_nav:
                 if prev_act is not None:
-                    self.env.reset(next_minibatch=False)
+                    self.dataloader.reset(next_minibatch=False)
                     for env_act in prev_act:
-                        self.env.step(env_act)
+                        self.dataloader.step(env_act)
             (img_feats, can_feats), lengths, _ = self.from_shortest_path(
                 for_nav=for_nav
             )  # Image Feature (from the shortest path)
@@ -382,10 +396,10 @@ class Speaker:
         if (self.helper_agent is not None and not for_nav) or (
             self.asker_oracle is not None and for_nav
         ):  # FRASE
-            env = (
-                self.helper_agent.env
+            dataloader = (
+                self.helper_agent.dataloader
                 if (self.helper_agent is not None and not for_nav)
-                else self.asker_oracle.env
+                else self.asker_oracle.dataloader
             )
             (
                 follower_distances,
@@ -416,7 +430,7 @@ class Speaker:
                 for i in range(batch_size):
                     if not (i in help_requesters):
                         continue
-                    # instruction = env.tok.decode_sentence(cand[i])
+                    # instruction = dataloader.dataset.tok.decode_sentence(cand[i])
                     # dia_inst = ''
                     # sentences = []
                     # seps = []
@@ -424,15 +438,15 @@ class Speaker:
                     # sep = '<ORA>' if not for_nav else '<NAV>'
                     # seps.append(sep)
                     # dia_inst += sep + ' ' + instruction + ' '
-                    # sentences.append(env.batch[i]['target'])
+                    # sentences.append(dataloader.batch[i]['target'])
                     # seps.append('<TAR>')
-                    # dia_inst += '<TAR> ' + env.batch[i]['target']
-                    # env.batch[i]['instructions'] = dia_inst
-                    # dia_enc = self.env.tok.encode_sentence(sentences, seps=seps)
-                    # env.batch[i]['instr_encoding'] = dia_enc
+                    # dia_inst += '<TAR> ' + dataloader.batch[i]['target']
+                    # dataloader.batch[i]['instructions'] = dia_inst
+                    # dia_enc = self.dataloader.dataset.tok.encode_sentence(sentences, seps=seps)
+                    # dataloader.batch[i]['instr_encoding'] = dia_enc
 
-                    instruction = self.env.tok.decode_sentence(
-                        self.env.tok.shrink(cand[perm_idx[i]])
+                    instruction = self.dataloader.dataset.tok.decode_sentence(
+                        self.dataloader.dataset.tok.shrink(cand[perm_idx[i]])
                     )
                     role = "navigator" if for_nav else "oracle"
                     new_obs[i]["generated_dialog_history"].append(
@@ -508,7 +522,7 @@ class Speaker:
                 agent_trajs.append(traj)
                 gen_dialogs.append(gen_dialog)
                 rl_losses.append(rl_loss)
-                env.reset(next_minibatch=False)
+                dataloader.reset(next_minibatch=False)
             follower_distances = np.stack(follower_distances, 1)
             # print follower_distances
             min_index = np.argmin(
@@ -585,7 +599,7 @@ class Speaker:
                 self.asker_oracle is None or not for_nav
             ):
                 _, predict = logits.max(dim=1)  # BATCH, LENGTH
-            gt_mask = insts != self.env.tok.word_to_index("<PAD>")
+            gt_mask = insts != self.dataloader.dataset.tok.word_to_index("<PAD>")
             correct = (predict[:, :-1] == insts[:, 1:]) * gt_mask[
                 :, 1:
             ]  # Not pad and equal to gt
@@ -633,7 +647,7 @@ class Speaker:
         loss = 0
 
         # Image Input for the Encoder
-        obs = self.env._get_obs()
+        obs = self.dataloader._get_obs()
         batch_size = len(obs)
 
         # Get feature
@@ -663,7 +677,9 @@ class Speaker:
         past_key_values = None
         ended = np.zeros(len(obs), np.bool)
         start_token = "<NAV>" if for_nav else "<ORA>"  # First word
-        word = np.ones(len(obs), np.int64) * self.env.tok.word_to_index(start_token)
+        word = np.ones(len(obs), np.int64) * self.dataloader.dataset.tok.word_to_index(
+            start_token
+        )
         word = torch.from_numpy(word).view(-1, 1).to(args.device)
         # target = torch.LongTensor(len(obs)).to(args.device)
         stacked_logits = []
@@ -687,11 +703,11 @@ class Speaker:
                 # loss += self.softmax_loss(logits, insts[:,i].squeeze())
                 stacked_logits.append(logits.clone().unsqueeze(2))
 
-            logits[:, self.env.tok.word_to_index("<PAD>")] = -float(
+            logits[:, self.dataloader.dataset.tok.word_to_index("<PAD>")] = -float(
                 "inf"
             )  # No <UNK> in infer
-            if not isinstance(self.env.tok, GPTTokenizer):
-                logits[:, self.env.tok.word_to_index("<UNK>")] = -float(
+            if not isinstance(self.dataloader.dataset.tok, GPTTokenizer):
+                logits[:, self.dataloader.dataset.tok.word_to_index("<UNK>")] = -float(
                     "inf"
                 )  # No <UNK> in infer
 
@@ -716,7 +732,7 @@ class Speaker:
 
             # Append the word
             cpu_word = word.cpu().numpy()
-            cpu_word[ended] = self.env.tok.word_to_index("<PAD>")
+            cpu_word[ended] = self.dataloader.dataset.tok.word_to_index("<PAD>")
             words.append(cpu_word)
 
             # Prepare the shape for next step
@@ -725,11 +741,13 @@ class Speaker:
             # End?
             if self.decoder_name == "gpt2":
                 ended = np.logical_or(
-                    ended, cpu_word == self.env.tok.word_to_index("<EOS>")
+                    ended,
+                    cpu_word == self.dataloader.dataset.tok.word_to_index("<EOS>"),
                 )
             else:
                 ended = np.logical_or(
-                    ended, cpu_word == self.env.tok.word_to_index("<EOS>")
+                    ended,
+                    cpu_word == self.dataloader.dataset.tok.word_to_index("<EOS>"),
                 )
             if ended.all():
                 break
@@ -746,9 +764,10 @@ class Speaker:
             # print p.size()
             # print insts.size()
             seq_tensor = np.zeros(
-                (len(obs), self.env.tok.vocab_size(), insts.size()[1]), dtype=np.float32
+                (len(obs), self.dataloader.dataset.tok.vocab_size(), insts.size()[1]),
+                dtype=np.float32,
             )
-            seq_tensor[:, self.env.tok.word_to_index("<PAD>"), :] = 1.0
+            seq_tensor[:, self.dataloader.dataset.tok.word_to_index("<PAD>"), :] = 1.0
             seq_tensor = torch.from_numpy(seq_tensor).to(args.device)
             seq_tensor[:, :, : p.size()[2]] = p[:, :, : insts.size()[1]]
             # print seq_tensor.size()

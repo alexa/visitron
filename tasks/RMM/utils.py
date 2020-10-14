@@ -4,6 +4,7 @@ import base64
 import copy
 import csv
 import json
+import logging
 import math
 import os
 import re
@@ -27,6 +28,8 @@ csv.field_size_limit(sys.maxsize)
 # padding, unknown word, end of sentence
 base_vocab = ["<PAD>", "<UNK>", "<EOS>", "<NAV>", "<ORA>", "<TAR>"]
 padding_idx = base_vocab.index("<PAD>")
+
+logger = logging.getLogger(__name__)
 
 
 def load_nav_graphs(scans):
@@ -80,7 +83,7 @@ def load_datasets(
                 )
             else:
                 data_source += "tasks/" + dataset_type + "/data/%s.json"
-            print("Using " + dataset_type + " for " + split + "!\n\n\n")
+            logger.info("Using " + dataset_type + " for " + split + "!\n\n\n")
             with open(data_source % split) as f:
                 items = json.load(f)
                 new_items = []
@@ -415,7 +418,7 @@ class Tokenizer(object):
             for key, value in self._word_to_index.items():
                 self._index_to_word[value] = key
         self.add_word("<BOS>")
-        print("VOCAB_SIZE", self.vocab_size())
+        logger.info("VOCAB_SIZE", self.vocab_size())
 
     def finalize(self):
         """
@@ -543,7 +546,7 @@ def build_vocab(splits=["train"], min_count=5, start_vocab=base_vocab):
 
 
 def write_vocab(vocab, path):
-    print("Writing vocab of size %d to %s" % (len(vocab), path))
+    logger.info("Writing vocab of size %d to %s" % (len(vocab), path))
     with open(path, "w") as f:
         for word in vocab:
             f.write("%s\n" % word)
@@ -572,16 +575,16 @@ def timeSince(since, percent):
 def get_optimizer_constructor(optim="rms"):
     optimizer = None
     if optim == "rms":
-        print("Optimizer: Using RMSProp")
+        logger.info("Optimizer: Using RMSProp")
         optimizer = torch.optim.RMSprop
     elif optim == "adam":
-        print("Optimizer: Using Adam")
+        logger.info("Optimizer: Using Adam")
         optimizer = torch.optim.Adam
     elif optim == "sgd":
-        print("Optimizer: sgd")
+        logger.info("Optimizer: sgd")
         optimizer = torch.optim.SGD
     elif optim == "adamax":
-        print("Optimizer: adamax")
+        logger.info("Optimizer: adamax")
         optimizer = torch.optim.Adamax
     else:
         assert False
@@ -598,9 +601,9 @@ def load_features(feature_store, blind, debug=False):
         feature_size = 2048
     else:
         if feature_store:
-            print("Loading image features from %s" % feature_store)
+            logger.info("Loading image features from %s" % feature_store)
             if blind:
-                print("... and zeroing them out for 'blind' evaluation")
+                logger.info("... and zeroing them out for 'blind' evaluation")
             tsv_fieldnames = [
                 "scanId",
                 "viewpointId",
@@ -627,9 +630,9 @@ def load_features(feature_store, blind, debug=False):
                     else:
                         features[long_id] = np.zeros((36, 2048), dtype=np.float32)
             feature_size = next(iter(features.values())).shape[-1]
-            print("The feature size is %d" % feature_size)
+            logger.info("The feature size is %d" % feature_size)
         else:
-            print("Image features not provided")
+            logger.info("Image features not provided")
     return features, {
         "image_w": image_w,
         "image_h": image_h,
@@ -727,7 +730,7 @@ class Timer:
     def show(self):
         total = sum(self.cul.values())
         for key in self.cul:
-            print(
+            logger.info(
                 "%s, total time %0.2f, avg time %0.2f, part of %0.2f"
                 % (
                     key,
@@ -736,7 +739,7 @@ class Timer:
                     self.cul[key] * 1.0 / total,
                 )
             )
-        print(total / self.iter)
+        logger.info(total / self.iter)
 
 
 stop_word_list = [",", ".", "and", "?", "!"]

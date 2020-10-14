@@ -1,10 +1,19 @@
 import argparse
+import logging
 import os
 
 import torch
 
+logger = logging.getLogger(__name__)
+
 parser = argparse.ArgumentParser()
 # Source directories settings
+parser.add_argument(
+    "--seed",
+    type=int,
+    default=1,
+    help="What random seed to set",
+)
 parser.add_argument(
     "--train_vocab", type=str, default="tasks/CVDN/data/train_vocab.txt"
 )
@@ -136,6 +145,14 @@ parser.add_argument(
 )
 parser.add_argument("--parallelize", action="store_true", required=False)
 
+parser.add_argument(
+    "-j",
+    "--num_workers",
+    default=4,
+    type=int,
+    metavar="N",
+    help="number of data loading workers (default: 4)",
+)
 parser.add_argument("--local_rank", type=int, default=-1, help="Local Rank")
 parser.add_argument("--debug", action="store_true", default=False)
 
@@ -287,11 +304,47 @@ args.DROPOUT_RATIO = 0.5
 args.LEARNING_RATE = 0.0001
 args.WEIGHT_DECAY = 0.0005
 
+if args.entity == "speaker":
+    args.experiment_name = (
+        "rmm_results/speaker-" + args.speaker_decoder + "-pretraining"
+    )
+elif args.mode == "gameplay":
+    args.experiment_name = (
+        "rmm_results/speaker-" + args.speaker_decoder + "-agent-finetuning"
+    )
+elif args.entity == "agent":
+    args.experiment_name = "rmm_results/agent-pretraining"
+else:
+    assert False, f"args.experiment_name: not allowed!"
+    import pdb
+
+    pdb.set_trace()
+
+if not os.path.isdir(args.experiment_name):
+    os.makedirs(args.experiment_name)
+
+handlers = [logging.StreamHandler()]
+if args.local_rank in [-1, 0]:
+    handlers += [
+        logging.FileHandler(
+            filename=os.path.join(args.experiment_name, "log"), mode="a"
+        )
+    ]
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(name)s -    %(message)s",
+    datefmt="%m/%d/%Y %H:%M:%S",
+    level=logging.INFO if args.local_rank in [-1, 0] else logging.WARN,
+    handlers=handlers,
+)
+
 # Setup CPU, CUDA, GPU & distributed training
 if args.local_rank == -1:
     device = torch.device("cpu")
+    args.local_rank = -2
+    args.n_gpu = -1
     if torch.cuda.is_available():
         device = torch.device("cuda")
+        args.local_rank = -1
         args.n_gpu = torch.cuda.device_count()
         if args.n_gpu > 1:
             assert False, "Data parallel training not setup!"
@@ -303,4 +356,10 @@ else:  # Initializes the distributed backend which will take care of sychronizin
     args.n_gpu = 1
 args.device = device
 
-print(f"Using {args.device}")
+logger.warning(
+    "Process rank: %s, device: %s, n_gpu: %s, distributed training: %s, ",
+    args.local_rank,
+    device,
+    args.n_gpu,
+    bool(args.local_rank not in [-2, -1]),
+)
