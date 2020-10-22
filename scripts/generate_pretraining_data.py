@@ -1,24 +1,25 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
-import sys
 import os
-from multiprocessing import Pool
+import sys
 from itertools import repeat
+from multiprocessing import Pool
 
 sys.path.append("build")
+import argparse
+import base64
+import json
+import logging
+import math
+import random
+
 import MatterSim
+import networkx as nx
 
 # import csv
 import numpy as np
-import math
-import base64
-import logging
-import json
-import random
-import networkx as nx
 from tqdm import tqdm
-import argparse
 
 
 def load_nav_graphs(scans):
@@ -62,9 +63,9 @@ def load_datasets(splits, dataset_type="NDH"):
     data = []
 
     if dataset_type == "NDH":
-        data_root = "tasks/NDH/data/"
+        data_root = "task_data/NDH/data/"
     elif dataset_type == "R2R":
-        data_root = "tasks/R2R/data/R2R_"
+        data_root = "task_data/R2R/data/R2R_"
     else:
         raise NotImplementedError
 
@@ -94,7 +95,7 @@ class SingleBatchSimulator:
         splits = ["train", "val_seen", "val_unseen", "test"]
         self.scans = []
         for split in splits:
-            with open("tasks/NDH/data/%s.json" % split) as f:
+            with open("task_data/NDH/data/%s.json" % split) as f:
                 items = json.load(f)
                 new_scans = [item["scan"] for item in items]
                 self.scans.extend(new_scans)
@@ -178,7 +179,11 @@ def loc_distance(loc):
 
 
 def getNextViewpointViewData(
-    scanId, current_viewpoint_id, current_heading, nextViewpointId, relative=False,
+    scanId,
+    current_viewpoint_id,
+    current_heading,
+    nextViewpointId,
+    relative=False,
 ):
     sim = SingleBatchSimulator()
     adj_dict = {}
@@ -254,11 +259,19 @@ def extract_data(split, dataset_to_use, job_index, total_jobs):
 
             current_view_index = sim.getCurrentViewpointViewIndex()
             next_view_data = getNextViewpointViewData(
-                scanId, curr_vId, sim.getState().heading, next_vId, relative=False,
+                scanId,
+                curr_vId,
+                sim.getState().heading,
+                next_vId,
+                relative=False,
             )
 
             target_view_data = getNextViewpointViewData(
-                scanId, curr_vId, sim.getState().heading, next_vId, relative=True,
+                scanId,
+                curr_vId,
+                sim.getState().heading,
+                next_vId,
+                relative=True,
             )
 
             sim.goToNextViewpoint(next_vId, next_view_data)
@@ -284,7 +297,7 @@ def extract_data(split, dataset_to_use, job_index, total_jobs):
                     data.append(new_new_item)
 
     with open(
-        f"tasks/NDH/pretrain_data/{dataset_to_use}_{split}_{job_index}_{total_jobs}.json",
+        f"task_data/NDH/pretrain_data/{dataset_to_use}_{split}_{job_index}_{total_jobs}.json",
         "w",
     ) as f:
         json.dump(data, f)
@@ -295,7 +308,7 @@ def merge_jsons(split, dataset_to_use, total_jobs):
 
     for job_index in range(total_jobs):
         with open(
-            f"tasks/NDH/pretrain_data/{dataset_to_use}_{split}_{job_index}_{total_jobs}.json",
+            f"task_data/NDH/pretrain_data/{dataset_to_use}_{split}_{job_index}_{total_jobs}.json",
             "r",
         ) as f:
             data = json.load(f)
@@ -304,20 +317,28 @@ def merge_jsons(split, dataset_to_use, total_jobs):
 
     print(f"Final data of length {len(final_data)}")
 
-    with open(f"tasks/NDH/pretrain_data/{dataset_to_use}_{split}.json", "w") as f:
+    with open(f"task_data/NDH/pretrain_data/{dataset_to_use}_{split}.json", "w") as f:
         json.dump(final_data, f)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--dataset_to_use", type=str, required=True, choices=["NDH", "R2R"],
+        "--dataset_to_use",
+        type=str,
+        required=True,
+        choices=["NDH", "R2R"],
     )
     parser.add_argument(
-        "--split", type=str, required=True, choices=["train", "val_seen", "val_unseen"],
+        "--split",
+        type=str,
+        required=True,
+        choices=["train", "val_seen", "val_unseen"],
     )
     parser.add_argument(
-        "--total_jobs", default=1, type=int,
+        "--total_jobs",
+        default=1,
+        type=int,
     )
 
     args = parser.parse_args()

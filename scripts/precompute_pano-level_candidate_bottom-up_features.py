@@ -1,20 +1,21 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
-import numpy as np
-import cv2
-import json
-import math
+import argparse
 import base64
 import csv
+import json
+import math
 import os
-import sys
-
+import pickle
 import random
+import sys
 from multiprocessing import Pool
 
-from sklearn.metrics import pairwise_distances
+import cv2
+import numpy as np
 from scipy.spatial.distance import cosine
+from sklearn.metrics import pairwise_distances
 
 SEED = 1
 
@@ -26,18 +27,17 @@ import matplotlib as mpl
 
 mpl.use("Agg")
 import matplotlib.pyplot as plt
-
 import MatterSim
 
-caffe_root = "bottom-up-matterport"
+caffe_root = "bottom-up"
 sys.path.insert(0, caffe_root + "/caffe/python")
 import caffe
 
 sys.path.insert(0, caffe_root + "/lib")
 sys.path.insert(0, caffe_root + "/lib/rpn")
 from fast_rcnn.config import cfg, cfg_from_file
-from fast_rcnn.test import im_detect, _get_blobs
 from fast_rcnn.nms_wrapper import nms
+from fast_rcnn.test import _get_blobs, im_detect
 
 from timer import Timer
 
@@ -62,7 +62,12 @@ TSV_FILENAMES = [
 # DRY_RUN = True
 DRY_RUN = False
 
-NUM_GPUS = 8
+parser = argparse.ArgumentParser()
+
+parser.add_argument("--num-gpus", type=int, default=8, help="")
+parser.add_argument("--gpu-id", type=int, default=-1, help="")
+args = parser.parse_args()
+NUM_GPUS = args.num_gpus
 
 FEATURE_SIZE = 2048
 
@@ -80,7 +85,7 @@ CFG_FILE = caffe_root + "/experiments/cfgs/faster_rcnn_end2end_resnet.yml"
 UPDOWN_DATA = caffe_root + "/data/genome/1600-400-20"
 
 GRAPHS = "connectivity/"
-OUTFILE = "img_features/ResNet-101-faster-rcnn-genome-candidate/ResNet-101-faster-rcnn-genome-candidate.tsv.%d.%d"
+OUTFILE = "img_features/ResNet-101-faster-rcnn-genome-candidate.tsv.%d.%d"
 MERGED = "img_features/ResNet-101-faster-rcnn-genome-candidate.tsv"
 
 WIDTH = 600
@@ -110,16 +115,16 @@ def load_viewpointids(node_id=0, gpu_id=0):
     random.seed(SEED)
     # random.shuffle(viewpointIds)
 
-    start_length = 1000
-    end_length = 1000
-    if node_id == 9:
-        end_length = 2000
+    # start_length = 1000
+    # end_length = 1000
+    # if node_id == 9:
+    #     end_length = 2000
 
     if NUM_GPUS != 1:
-        viewpointIds = viewpointIds[node_id * start_length : (node_id + 1) * end_length]
-        print(
-            "%d to %d viewpoints" % (node_id * start_length, (node_id + 1) * end_length)
-        )
+        # viewpointIds = viewpointIds[node_id * start_length : (node_id + 1) * end_length]
+        # print(
+        #     "%d to %d viewpoints" % (node_id * start_length, (node_id + 1) * end_length)
+        # )
         viewpointIds = viewpointIds[gpu_id::NUM_GPUS]
     print("%d: Loaded %d viewpoints" % (gpu_id, len(viewpointIds)))
     return viewpointIds
@@ -357,7 +362,7 @@ def load_classes():
 
 
 def build_tsv(gpu_id=0):
-    NODE_ID = 9
+    NODE_ID = 0
 
     print("NODE_ID: %d GPU_ID: %d build_tsv" % (NODE_ID, gpu_id))
 
@@ -371,7 +376,7 @@ def build_tsv(gpu_id=0):
 
     cfg_from_file(CFG_FILE)
     caffe.set_mode_gpu()
-    caffe.set_device(gpu_id)
+    caffe.set_device(0)
     net = caffe.Net(PROTO, caffe.TEST, weights=MODEL)
     classes, attributes = load_classes()
 
@@ -441,11 +446,19 @@ def build_tsv(gpu_id=0):
 
                     fig.savefig(
                         "img_features/examples/%s-%s-%d.png"
-                        % (record["scanId"], record["viewpointId"], ix,)
+                        % (
+                            record["scanId"],
+                            record["viewpointId"],
+                            ix,
+                        )
                     )
                     print(
                         "Saved %s-%s-%s"
-                        % (record["scanId"], record["viewpointId"], ix,)
+                        % (
+                            record["scanId"],
+                            record["viewpointId"],
+                            ix,
+                        )
                     )
                     plt.close()
 
@@ -473,6 +486,12 @@ def build_tsv(gpu_id=0):
                         ),
                     )
                 )
+
+
+OUTFILE = "img_features/ResNet-101-faster-rcnn-genome-candidate.tsv.0.%d"
+MERGED = "img_features/ResNet-101-faster-rcnn-genome-candidate.tsv"
+NUM_GPUS = 13
+MERGED_PICKLE = "img_features/ResNet-101-faster-rcnn-genome-candidate.pickle"
 
 
 def merge_tsvs():
@@ -543,14 +562,17 @@ def read_tsv(infile):
 
 if __name__ == "__main__":
 
-    gpu_ids = range(NUM_GPUS)
-    p = Pool(NUM_GPUS)
-    p.map(build_tsv, gpu_ids)
+    # gpu_ids = range(NUM_GPUS)
+    # p = Pool(NUM_GPUS)
+    # p.map(build_tsv, gpu_ids)
     # merge_tsvs()
 
-    # build_tsv(gpu_id=0)
+    # build_tsv(gpu_id=args.gpu_id)
+    # merge_tsvs()
 
-    # data = read_tsv(MERGED)
+    data = read_tsv(MERGED)
+    with open(MERGED_PICKLE, "wb") as handle:
+        pickle.dump(data, handle)
     # import pdb
 
     # pdb.set_trace()
