@@ -6,6 +6,8 @@
 /models
 /results
 /rmm_results
+/logs
+/srv
 /snap
 /tasks/CVDN/data/*json*
 /tasks/NDH/data/*json*

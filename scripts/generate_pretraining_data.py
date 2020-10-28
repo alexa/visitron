@@ -1,22 +1,19 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
-import os
-import sys
-from itertools import repeat
-from multiprocessing import Pool
-
-sys.path.append("build")
 import argparse
 import base64
 import json
 import logging
 import math
+import os
 import random
+import sys
+from itertools import repeat
+from multiprocessing import Pool
 
 import MatterSim
 import networkx as nx
-
 # import csv
 import numpy as np
 from tqdm import tqdm
@@ -66,6 +63,8 @@ def load_datasets(splits, dataset_type="NDH"):
         data_root = "task_data/NDH/data/"
     elif dataset_type == "R2R":
         data_root = "task_data/R2R/data/R2R_"
+    elif dataset_type == "R4R":
+        data_root = "task_data/R4R/data/R4R_"
     else:
         raise NotImplementedError
 
@@ -232,7 +231,7 @@ def extract_data(split, dataset_to_use, job_index, total_jobs):
 
         if dataset_to_use == "NDH":
             path = item["planner_path"]
-        elif dataset_to_use == "R2R":
+        elif dataset_to_use in ["R2R", "R4R"]:
             path = item["path"]
 
         if len(path) < 2:
@@ -247,7 +246,7 @@ def extract_data(split, dataset_to_use, job_index, total_jobs):
         if dataset_to_use == "NDH":
             heading = item["start_pano"]["heading"]
             elevation = item["start_pano"]["elevation"]
-        elif dataset_to_use == "R2R":
+        elif dataset_to_use in ["R2R", "R4R"]:
             heading = item["heading"]
             elevation = 0
 
@@ -285,19 +284,25 @@ def extract_data(split, dataset_to_use, job_index, total_jobs):
             new_item["target_rel_view_index"] = target_view_data["pointId"]
 
             if dataset_to_use == "NDH":
-                new_item["inst_idx"] = f"{item['inst_idx']}_{i}"
+                new_item["inst_idx"] = f"ndh_{item['inst_idx']}_{i}"
                 new_item["dialog_history"] = item["dialog_history"]
                 new_item["target"] = item["target"]
                 data.append(new_item)
             elif dataset_to_use == "R2R":
                 for instr_no, instr in enumerate(item["instructions"]):
                     new_new_item = dict(new_item)
-                    new_new_item["inst_idx"] = f"{item['path_id']}_{i}_{instr_no}"
+                    new_new_item["inst_idx"] = f"r2r_{item['path_id']}_{i}_{instr_no}"
+                    new_new_item["dialog_history"] = instr
+                    data.append(new_new_item)
+            elif dataset_to_use == "R4R":
+                for instr_no, instr in enumerate(item["instructions"]):
+                    new_new_item = dict(new_item)
+                    new_new_item["inst_idx"] = f"r4r_{item['path_id']}_{i}_{instr_no}"
                     new_new_item["dialog_history"] = instr
                     data.append(new_new_item)
 
     with open(
-        f"task_data/NDH/pretrain_data/{dataset_to_use}_{split}_{job_index}_{total_jobs}.json",
+        f"task_data/pretrain_data/{dataset_to_use}_{split}_{job_index}_{total_jobs}.json",
         "w",
     ) as f:
         json.dump(data, f)
@@ -308,7 +313,7 @@ def merge_jsons(split, dataset_to_use, total_jobs):
 
     for job_index in range(total_jobs):
         with open(
-            f"task_data/NDH/pretrain_data/{dataset_to_use}_{split}_{job_index}_{total_jobs}.json",
+            f"task_data/pretrain_data/{dataset_to_use}_{split}_{job_index}_{total_jobs}.json",
             "r",
         ) as f:
             data = json.load(f)
@@ -317,7 +322,7 @@ def merge_jsons(split, dataset_to_use, total_jobs):
 
     print(f"Final data of length {len(final_data)}")
 
-    with open(f"task_data/NDH/pretrain_data/{dataset_to_use}_{split}.json", "w") as f:
+    with open(f"task_data/pretrain_data/{dataset_to_use}_{split}.json", "w") as f:
         json.dump(final_data, f)
 
 
@@ -327,7 +332,7 @@ if __name__ == "__main__":
         "--dataset_to_use",
         type=str,
         required=True,
-        choices=["NDH", "R2R"],
+        choices=["NDH", "R2R", "R4R"],
     )
     parser.add_argument(
         "--split",
@@ -336,24 +341,36 @@ if __name__ == "__main__":
         choices=["train", "val_seen", "val_unseen"],
     )
     parser.add_argument(
-        "--total_jobs",
-        default=1,
+        "--start_job_index",
+        default=0,
+        type=int,
+    )
+    parser.add_argument(
+        "--end_job_index",
+        default=7,
+        type=int,
+    )
+    parser.add_argument(
+        "--global_total_jobs",
+        default=8,
         type=int,
     )
 
     args = parser.parse_args()
 
-    processes = range(args.total_jobs)
+    total_jobs = args.end_job_index - args.start_job_index + 1
 
-    with Pool(processes=args.total_jobs) as pool:
-        pool.starmap(
-            extract_data,
-            zip(
-                repeat(args.split),
-                repeat(args.dataset_to_use),
-                processes,
-                repeat(args.total_jobs),
-            ),
-        )
+    processes = range(args.start_job_index, args.end_job_index + 1)
 
-    merge_jsons(args.split, args.dataset_to_use, args.total_jobs)
+    # with Pool(processes=total_jobs) as pool:
+    #     pool.starmap(
+    #         extract_data,
+    #         zip(
+    #             repeat(args.split),
+    #             repeat(args.dataset_to_use),
+    #             processes,
+    #             repeat(args.global_total_jobs),
+    #         ),
+    #     )
+
+    merge_jsons(args.split, args.dataset_to_use, total_jobs)

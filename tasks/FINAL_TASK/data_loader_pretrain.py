@@ -14,9 +14,9 @@ import networkx as nx
 # import csv
 import numpy as np
 import torch
-from get_oscar_model import special_tokens_dict
 from torch.utils.data import DataLoader, Dataset
 
+from get_oscar_model import special_tokens_dict
 from utils_data import load_datasets, load_nav_graphs, truncate_dialogs
 
 logger = logging.getLogger(__name__)
@@ -63,6 +63,7 @@ class PretrainDataset(Dataset):
         truncate_dialog=False,
         add_ndh_data=True,
         add_r2r_data=False,
+        add_r4r_data=False,
     ):
         super(PretrainDataset, self).__init__()
 
@@ -95,7 +96,7 @@ class PretrainDataset(Dataset):
             for item in load_datasets(splits, dataset_type="PretrainNDH"):
 
                 new_item = dict(item)
-                new_item["inst_idx"] = f"NDH_{item['inst_idx']}"
+                new_item["inst_idx"] = f"{item['inst_idx']}"
 
                 token_target = tokenizer.tokenize(item["target"])
                 token_target = token_target[:MAX_TARGET_LENGTH]
@@ -126,8 +127,75 @@ class PretrainDataset(Dataset):
                 else:
                     sep_token = tokenizer.tar_token
 
+                for i, turn in enumerate(token_dialog_history):
+                    if use_oscar_settings:
+                        sep_token = tokenizer.sep_token
+                        segment_id = sep_token_segment_id
+                    else:
+                        if i % 2 == 0:
+                            sep_token = tokenizer.ques_token
+                            segment_id = ques_token_segment_id
+                        else:
+                            sep_token = tokenizer.ans_token
+                            segment_id = ans_token_segment_id
+
+                    tokens += [sep_token] + turn
+                    segment_ids += [segment_id] * (len(turn) + 1)
+
                 tokens += [sep_token] + token_target
                 segment_ids += [tar_token_segment_id] * (len(token_target) + 1)
+
+                tokens += new_item["region_tokens"]
+                segment_ids += [sep_token_segment_id] * len(new_item["region_tokens"])
+
+                tokens += [tokenizer.sep_token]
+                segment_ids += [sep_token_segment_id]
+
+                tokens += [tokenizer.pad_token] * (MAX_SEQ_LENGTH - len(tokens) - 1)
+                segment_ids += [pad_token_segment_id] * (
+                    MAX_SEQ_LENGTH - len(segment_ids) - 1
+                )
+
+                new_item["target_dialog_tokens"] = tokens
+                new_item["target_dialog_tokens_id"] = tokenizer.convert_tokens_to_ids(
+                    tokens
+                )
+                new_item["target_dialog_tokens_id"] = torch.LongTensor(
+                    new_item["target_dialog_tokens_id"]
+                )
+                new_item["target_dialog_segment_ids"] = segment_ids
+
+                self.data.append(new_item)
+        if add_r2r_data:
+            for item in load_datasets(splits, dataset_type="PretrainR2R"):
+
+                # for j, instr in enumerate(item["instructions"]):
+
+                new_item = dict(item)
+                new_item["inst_idx"] = f"{item['inst_idx']}"
+
+                token_turn = tokenizer.tokenize(new_item["dialog_history"])
+                token_dialog_history = [token_turn]
+
+                if truncate_dialog:
+                    # max_seq_length - 4 as accounting for [CLS], [TAR], Target, [SEP]
+                    token_dialog_history = truncate_dialogs(
+                        token_dialog_history, amount=MAX_DIALOG_LEN, left=True
+                    )
+
+                new_item["tokens_dialog_history"] = token_dialog_history
+
+                new_item["region_tokens"] = self._extract_region_labels(
+                    item["scan"], item["viewpoint"], MAX_REGION_LABELS_LENGTH
+                )
+
+                tokens = [tokenizer.cls_token]
+                segment_ids = [cls_token_segment_id]
+
+                if use_oscar_settings:
+                    sep_token = tokenizer.sep_token
+                else:
+                    sep_token = tokenizer.tar_token
 
                 for i, turn in enumerate(token_dialog_history):
                     if use_oscar_settings:
@@ -165,13 +233,12 @@ class PretrainDataset(Dataset):
                 new_item["target_dialog_segment_ids"] = segment_ids
 
                 self.data.append(new_item)
-        if add_r2r_data:
-            for item in load_datasets(splits, dataset_type="PretrainR2R"):
 
-                # for j, instr in enumerate(item["instructions"]):
+        if add_r4r_data:
+            for item in load_datasets(splits, dataset_type="PretrainR4R"):
 
                 new_item = dict(item)
-                new_item["inst_idx"] = f"R2R_{item['inst_idx']}"
+                new_item["inst_idx"] = f"{item['inst_idx']}"
 
                 token_turn = tokenizer.tokenize(new_item["dialog_history"])
                 token_dialog_history = [token_turn]
@@ -236,15 +303,24 @@ class PretrainDataset(Dataset):
         self.splits = splits
 
         logger.info(
-            "PretrainDataset loaded with %d instructions, using splits: %s NDH: %r R2R: %r"
-            % (len(self.data), ",".join(splits), add_ndh_data, add_r2r_data)
+            "PretrainDataset loaded with %d instructions, using splits: %s NDH: %r R2R: %r R4R: %r"
+            % (
+                len(self.data),
+                ",".join(splits),
+                add_ndh_data,
+                add_r2r_data,
+                add_r4r_data,
+            )
         )
 
     def _extract_region_labels(self, scan_id, viewpoint_id, MAX_REGION_LABELS_LENGTH):
         region_labels = []
         for view_idx in range(36):
             long_id = f"{scan_id}_{viewpoint_id}_{view_idx}"
-            region_label = self.region_labels[long_id][:5]
+            if self.args.debug:
+                region_label = ["wall"] * 5
+            else:
+                region_label = self.region_labels[long_id][:5]
             region_labels.extend(region_label)
 
         region_labels = set(region_labels)
@@ -259,7 +335,10 @@ class PretrainDataset(Dataset):
     def __getitem__(self, index):
         item = self.data[index]
         output = self._preprocess_item(item)
-        return {key: torch.tensor(value) for key, value in output.items()}
+        return {
+            key: (torch.tensor(value) if not isinstance(value, torch.Tensor) else value)
+            for key, value in output.items()
+        }
 
     def _mask_tokens(self, inputs):
 
@@ -279,7 +358,7 @@ class PretrainDataset(Dataset):
         # masked_indices = torch.bernoulli(torch.full(labels.shape, args.mlm_probability)).type(torch.ByteTensor)
         masked_indices = torch.bernoulli(probability_matrix).type(torch.bool)
 
-        attention_mask = torch.full(labels.shape, 1).masked_fill_(
+        attention_mask = torch.full(labels.shape, 1, dtype=torch.bool).masked_fill_(
             torch.tensor(att_mask, dtype=torch.bool), value=0
         )
         labels[~masked_indices] = -1  # We only compute loss on masked tokens
@@ -320,7 +399,10 @@ class PretrainDataset(Dataset):
         region_labels = []
         for idx in range(36):
             long_id = f"{scan_id}_{viewpoint_id}_{idx}"
-            feature = self.feature_store["features"][long_id][:5]
+            if self.args.debug:
+                feature = torch.rand(5, 2054)
+            else:
+                feature = self.feature_store["features"][long_id][:5]
             img_features.append(feature)
             view_indices.extend([idx] * feature.shape[0])
         img_features = np.concatenate(img_features, axis=0)
@@ -380,6 +462,23 @@ class PretrainDataset(Dataset):
             img_features = torch.cat((img_features, padding_matrix), dim=0)
             location_embeddings = torch.cat(
                 (location_embeddings, location_embed_padding_matrix), dim=0
+            )
+            if self.args.max_img_seq_length > 0:
+                attention_mask = attention_mask + [0] * padding_matrix.shape[0]
+
+        labels = labels.tolist() + [-1] * img_features.shape[0]
+        labels = torch.LongTensor(labels)
+
+        output = {
+            "input_ids": inputs,
+            "labels": labels,
+            "attention_mask": attention_mask,
+            "img_feats": img_features,
+            "img_location_embeddings": location_embeddings,
+            "next_action": target_view_index,
+        }
+        return output
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            (location_embeddings, location_embed_padding_matrix), dim=0
             )
             if self.args.max_img_seq_length > 0:
                 attention_mask = attention_mask + [0] * padding_matrix.shape[0]
