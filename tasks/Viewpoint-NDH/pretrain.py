@@ -1,42 +1,37 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
+import logging
 import os
 import sys
-import logging
 import time
+from collections import defaultdict
+
 import numpy as np
 import pandas as pd
 import torch
-from params import args
-from data_loader import VLNDataset, VLNDataLoader, VLNDataloader_collate_fn
-from data_loader_pretrain import PretrainDataset
-from eval import Evaluation
-from agent import OscarAgent
-from agent_lstm import LSTMAgent
-from utils import set_seed, setup_vocab, read_vocab, Tokenizer
-from utils_model import load_oscar_model, MODEL_CLASS
-from utils_data import load_per_view_img_pickle_features, timeSince, read_img_features
-from collections import defaultdict
-
-from tensorboardX import SummaryWriter
-
 import torch.distributed as dist
+from tensorboardX import SummaryWriter
+from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
-from torch.utils.data import (
-    RandomSampler,
-    SequentialSampler,
-    DataLoader,
-)
-
 from transformers.pytorch_transformers import (
-    modeling_bert,
+    AdamW,
     BertConfig,
     BertTokenizer,
-    AdamW,
-    WarmupLinearSchedule,
     WarmupConstantSchedule,
+    WarmupLinearSchedule,
+    modeling_bert,
 )
+
+from agent import OscarAgent
+from agent_lstm import LSTMAgent
+from data_loader import VLNDataLoader, VLNDataloader_collate_fn, VLNDataset
+from data_loader_pretrain import PretrainDataset
+from eval import Evaluation
+from params import args
+from utils import Tokenizer, read_vocab, set_seed, setup_vocab
+from utils_data import load_per_view_img_pickle_features, read_img_features, timeSince
+from utils_model import MODEL_CLASS, load_oscar_model
 
 logger = logging.getLogger(__name__)
 
@@ -206,7 +201,9 @@ def train(args, features, region_labels):
                     "accuracy/train_word", words_accuracy, global_step=global_iter
                 )
                 tb_writer.add_scalar(
-                    "accuracy/train_action", action_accuracy, global_step=global_iter,
+                    "accuracy/train_action",
+                    action_accuracy,
+                    global_step=global_iter,
                 )
                 log_str = (
                     f"Global Iter: {global_iter} Epoch: {epoch_no}/{args.num_epochs} Iter: {step}/{iters_per_epoch}"
