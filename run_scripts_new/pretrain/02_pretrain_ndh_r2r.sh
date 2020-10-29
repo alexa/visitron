@@ -1,7 +1,7 @@
 cpu="python"
 single_gpu="python"
 multi_gpu_data_parallel="python"
-multi_gpu_dist_data_parallel="python -m torch.distributed.launch --nproc_per_node 4 --nnodes 1 --node_rank 0"
+multi_gpu_dist_data_parallel="python -m torch.distributed.launch --nproc_per_node 8 --nnodes 1 --node_rank 0"
 
 case $1 in
     cpu)
@@ -33,13 +33,12 @@ arguments="
 --img_feature_file ResNet-101-faster-rcnn-genome-worientation
 --data_dir srv/task_data/NDH/data
 --model_name_or_path srv/oscar_pretrained_models/base-vg-labels/ep_107_1192087
---output_dir srv/results/pretrain/pretrain_masked_lm_1-in-36-viewpoint_ndh_r2r_r4r-$1
+--output_dir srv/results/pretrain/pretrain_masked_lm_1-in-36-viewpoint_ndh_r2r-$1
 --add_ndh_data
 --add_r2r_data
---add_r4r_data
 --max_seq_length 768
 --img_feature_dim 2054
---per_gpu_train_batch_size 4
+--per_gpu_train_batch_size 2
 --action_space 36
 --learning_rate 5e-05
 --weight_decay 0.05
@@ -47,7 +46,7 @@ arguments="
 --warmup_steps 0
 --drop_out 0.3
 --logging_steps 10
---save_steps 500
+--save_steps 100
 --seed 88
 --num_workers 0
 --slurm_info '$slurm_info'
@@ -57,4 +56,4 @@ arguments="
 command_to_run="${setting} ${file} ${arguments}"
 echo $command_to_run
 echo
-eval "CUDA_VISIBLE_DEVICES=0,1,2,3 $command_to_run"
+eval $command_to_run
