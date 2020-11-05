@@ -13,20 +13,26 @@ import torch.distributed as dist
 from tensorboardX import SummaryWriter
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
+from tqdm import tqdm
 
 from data_loader_pretrain import PretrainDataset
 from get_oscar_model import load_oscar_model
 from oscar.transformers_src.pytorch_transformers import (
-    AdamW, BertConfig, BertTokenizer, WarmupConstantSchedule,
-    WarmupLinearSchedule, modeling_bert)
+    AdamW,
+    BertConfig,
+    BertTokenizer,
+    WarmupConstantSchedule,
+    WarmupLinearSchedule,
+    modeling_bert,
+)
 from params import args
 from utils import set_seed
-from utils_data import load_per_view_img_pickle_features, timeSince
+from utils_data import FeaturesReader, load_per_view_img_pickle_features, timeSince
 
 logger = logging.getLogger(__name__)
 
 
-def train(args, features, region_labels):
+def train(args, features_reader):
 
     model, tokenizer, config = load_oscar_model(
         args,
@@ -43,15 +49,21 @@ def train(args, features, region_labels):
 
     model.to(args.device)
 
+    version = "v1"
+    if args.masked_token_prediction:
+        version = "v2"
+
     train_dataset = PretrainDataset(
         args=args,
         splits=["train"],
-        feature_store=features,
-        region_labels=region_labels,
+        features_reader=features_reader,
         tokenizer=tokenizer,
         truncate_dialog=True,
         add_ndh_data=args.add_ndh_data,
         add_r2r_data=args.add_r2r_data,
+        add_r4r_data=args.add_r4r_data,
+        add_rxr_data=args.add_rxr_data,
+        version=version,
     )
 
     tensorboard_dir = os.path.join(args.output_dir, "tensorboard")
@@ -228,7 +240,7 @@ def train(args, features, region_labels):
                 logger.info(f"Saving model checkpoint {global_iter} to {output_dir}")
 
 
-def val(args, features, region_labels, list_iter_no):
+def val(args, features_reader, list_iter_no):
 
     tensorboard_dir = os.path.join(args.output_dir, "tensorboard")
     if args.local_rank in [-2, -1, 0]:
@@ -241,7 +253,7 @@ def val(args, features, region_labels, list_iter_no):
 
         model, tokenizer, config = load_oscar_model(
             args,
-            "PreTrainImageBertForSequenceClassificationwithAction",
+            "PreTrainOscar",
             add_new_extra_embeds=False,
             finetuned=args.eval_only,
         )
@@ -251,23 +263,27 @@ def val(args, features, region_labels, list_iter_no):
         ndh_val_seen_dataset = PretrainDataset(
             args=args,
             splits=["val_seen"],
-            feature_store=features,
-            region_labels=region_labels,
+            features_reader=features_reader,
             tokenizer=tokenizer,
             truncate_dialog=True,
             add_ndh_data=True,
             add_r2r_data=False,
+            add_r4r_data=False,
+            add_rxr_data=False,
+            version="v1",
         )
 
         ndh_val_unseen_dataset = PretrainDataset(
             args=args,
             splits=["val_unseen"],
-            feature_store=features,
-            region_labels=region_labels,
+            features_reader=features_reader,
             tokenizer=tokenizer,
             truncate_dialog=True,
             add_ndh_data=True,
             add_r2r_data=False,
+            add_r4r_data=False,
+            add_rxr_data=False,
+            version="v1",
         )
 
         val_datasets = {
@@ -279,27 +295,91 @@ def val(args, features, region_labels, list_iter_no):
             r2r_val_seen_dataset = PretrainDataset(
                 args=args,
                 splits=["val_seen"],
-                feature_store=features,
-                region_labels=region_labels,
+                features_reader=features_reader,
                 tokenizer=tokenizer,
                 truncate_dialog=True,
                 add_ndh_data=False,
                 add_r2r_data=True,
+                add_r4r_data=False,
+                add_rxr_data=False,
+                version="v1",
             )
 
             r2r_val_unseen_dataset = PretrainDataset(
                 args=args,
                 splits=["val_unseen"],
-                feature_store=features,
-                region_labels=region_labels,
+                features_reader=features_reader,
                 tokenizer=tokenizer,
                 truncate_dialog=True,
                 add_ndh_data=False,
                 add_r2r_data=True,
+                add_r4r_data=False,
+                add_rxr_data=False,
+                version="v1",
             )
 
             val_datasets["r2r_val_seen"] = r2r_val_seen_dataset
             val_datasets["r2r_val_unseen"] = r2r_val_unseen_dataset
+
+        if args.add_r4r_data:
+            r4r_val_seen_dataset = PretrainDataset(
+                args=args,
+                splits=["val_seen"],
+                features_reader=features_reader,
+                tokenizer=tokenizer,
+                truncate_dialog=True,
+                add_ndh_data=False,
+                add_r2r_data=False,
+                add_r4r_data=True,
+                add_rxr_data=False,
+                version="v1",
+            )
+
+            r4r_val_unseen_dataset = PretrainDataset(
+                args=args,
+                splits=["val_unseen"],
+                features_reader=features_reader,
+                tokenizer=tokenizer,
+                truncate_dialog=True,
+                add_ndh_data=False,
+                add_r2r_data=False,
+                add_r4r_data=True,
+                add_rxr_data=False,
+                version="v1",
+            )
+
+            val_datasets["r4r_val_seen"] = r4r_val_seen_dataset
+            val_datasets["r4r_val_unseen"] = r4r_val_unseen_dataset
+
+        if args.add_rxr_data:
+            rxr_val_seen_dataset = PretrainDataset(
+                args=args,
+                splits=["val_seen"],
+                features_reader=features_reader,
+                tokenizer=tokenizer,
+                truncate_dialog=True,
+                add_ndh_data=False,
+                add_r2r_data=False,
+                add_r4r_data=False,
+                add_rxr_data=True,
+                version="v1",
+            )
+
+            rxr_val_unseen_dataset = PretrainDataset(
+                args=args,
+                splits=["val_unseen"],
+                features_reader=features_reader,
+                tokenizer=tokenizer,
+                truncate_dialog=True,
+                add_ndh_data=False,
+                add_r2r_data=False,
+                add_r4r_data=False,
+                add_rxr_data=True,
+                version="v1",
+            )
+
+            val_datasets["rxr_val_seen"] = rxr_val_seen_dataset
+            val_datasets["rxr_val_unseen"] = rxr_val_unseen_dataset
 
         val_data_loaders = {}
         args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
@@ -346,7 +426,9 @@ def val(args, features, region_labels, list_iter_no):
 
             total_count = 0
 
-            for step, batch in enumerate(dataloader):
+            for step, batch in tqdm(
+                enumerate(dataloader), desc=f"Evaluating {env_name}"
+            ):
                 batch = {key: item.to(args.device) for key, item in batch.items()}
                 loss, mask_loss, next_loss, words_accuracy, action_accuracy = model(
                     **batch
@@ -431,7 +513,6 @@ def val(args, features, region_labels, list_iter_no):
 
 def main():
 
-    print(args.local_rank)
     if (
         args.local_rank in [-1, 0]
         and os.path.exists(args.output_dir)
@@ -478,6 +559,8 @@ def main():
         args.n_gpu = 1
     args.device = device
 
+    logger.info(args.slurm_info)
+
     logger.warning(
         "Process rank: %s, device: %s, n_gpu: %s, distributed training: %s, 16-bits training: %s",
         args.local_rank,
@@ -492,26 +575,32 @@ def main():
 
     logger.info("Pretraining parameters %s", args)
 
-    if args.debug:
-        logger.info(f"DEBUG - {args.debug}: using dummy features & region labels")
-        features = None
-        region_labels = None
-    else:
-        features, region_labels = load_per_view_img_pickle_features(
-            args.img_feat_dir, args.img_feature_file
-        )
+    # if args.debug:
+    #     logger.info(f"DEBUG - {args.debug}: using dummy features & region labels")
+    #     features = None
+    #     region_labels = None
+    # else:
+    #     features, region_labels = load_per_view_img_pickle_features(
+    #         args.img_feat_dir, args.img_feature_file
+    #     )
+
+    img_feature_path = os.path.join(args.img_feat_dir, args.img_feature_file)
+    features_reader = FeaturesReader(
+        path=img_feature_path,
+        use_lmdb=(not args.eval_only),
+        in_memory=False,
+    )
 
     if args.eval_only:
         assert (
             len(args.eval_iters) != 0 and args.eval_iters != -1
         ), "incorrect eval_iters provided!"
-        val(args, features, region_labels, args.eval_iters)
+        val(args, features_reader, args.eval_iters)
     else:
-        train(args, features, region_labels)
+        train(args, features_reader)
 
     sys.exit()
 
 
 if __name__ == "__main__":
     main()
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              

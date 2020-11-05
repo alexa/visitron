@@ -21,6 +21,7 @@ from get_oscar_model import special_tokens_dict
 from utils_data import (
     check_and_load_preprocessed_data,
     load_datasets,
+    load_detector_classes,
     load_nav_graphs,
     save_preprocessed_data,
     truncate_dialogs,
@@ -70,13 +71,14 @@ class PretrainDataset(Dataset):
         add_ndh_data=True,
         add_r2r_data=False,
         add_r4r_data=False,
+        add_rxr_data=False,
         version="v1",
     ):
         super(PretrainDataset, self).__init__()
 
-        assert version == "v1"
+        assert version in ["v1", "v2"]
         assert tokenizer is not None
-        assert (add_ndh_data or add_r2r_data or add_r4r_data) is True
+        assert (add_ndh_data or add_r2r_data or add_r4r_data or add_rxr_data) is True
 
         self.args = args
         self.tokenizer = tokenizer
@@ -98,6 +100,9 @@ class PretrainDataset(Dataset):
         MAX_DIALOG_LEN = 512 - 180 - 4  # including [QUES]s and [ANS]s
         MAX_TARGET_LENGTH = 4 - 2  # [CLS], [TAR], [SEP] after QA and before Action
         # # TODO: ^^ add them as args ^^
+
+        if self.args.masked_token_prediction:
+            self.detector_classes = load_detector_classes()
 
         if add_ndh_data:
             preprocessed_data = check_and_load_preprocessed_data(
@@ -140,6 +145,11 @@ class PretrainDataset(Dataset):
                     tokens = [tokenizer.cls_token]
                     segment_ids = [cls_token_segment_id]
 
+                    if self.args.masked_token_prediction:
+                        # mtp: masked token prediction
+                        # True if region token else False
+                        mtp_mask = [False]
+
                     for i, turn in enumerate(token_dialog_history):
                         if use_oscar_settings:
                             sep_token = tokenizer.sep_token
@@ -155,6 +165,9 @@ class PretrainDataset(Dataset):
                         tokens += [sep_token] + turn
                         segment_ids += [segment_id] * (len(turn) + 1)
 
+                        if self.args.masked_token_prediction:
+                            mtp_mask += [False] * (len(turn) + 1)
+
                     if use_oscar_settings:
                         sep_token = tokenizer.sep_token
                     else:
@@ -163,21 +176,39 @@ class PretrainDataset(Dataset):
                     tokens += [sep_token] + token_target
                     segment_ids += [tar_token_segment_id] * (len(token_target) + 1)
 
+                    if self.args.masked_token_prediction:
+                        mtp_mask += [False] * (len(token_target) + 1)
+
                     tokens += [tokenizer.sep_token]
                     segment_ids += [sep_token_segment_id]
+
+                    if self.args.masked_token_prediction:
+                        mtp_mask += [False]
 
                     tokens += new_item["region_tokens"]
                     segment_ids += [sep_token_segment_id] * len(
                         new_item["region_tokens"]
                     )
 
+                    if self.args.masked_token_prediction:
+                        mtp_mask += [
+                            True if token in self.detector_classes else False
+                            for token in new_item["region_tokens"]
+                        ]
+
                     tokens += [tokenizer.sep_token]
                     segment_ids += [sep_token_segment_id]
+
+                    if self.args.masked_token_prediction:
+                        mtp_mask += [False]
 
                     tokens += [tokenizer.pad_token] * (MAX_SEQ_LENGTH - len(tokens) - 1)
                     segment_ids += [pad_token_segment_id] * (
                         MAX_SEQ_LENGTH - len(segment_ids) - 1
                     )
+
+                    if self.args.masked_token_prediction:
+                        mtp_mask += [False] * (MAX_SEQ_LENGTH - len(mtp_mask) - 1)
 
                     new_item["target_dialog_tokens"] = tokens
                     new_item[
@@ -188,12 +219,14 @@ class PretrainDataset(Dataset):
                     )
                     new_item["target_dialog_segment_ids"] = segment_ids
 
+                    if self.args.masked_token_prediction:
+                        new_item["masked_token_prediction_mask"] = mtp_mask
+
                     ndh_data.append(new_item)
                 self.data.extend(ndh_data)
                 save_preprocessed_data(
                     ndh_data, splits, version, dataset_type="PretrainNDH"
                 )
-
         if add_r2r_data:
             preprocessed_data = check_and_load_preprocessed_data(
                 splits, version, dataset_type="PretrainR2R"
@@ -231,10 +264,10 @@ class PretrainDataset(Dataset):
                     tokens = [tokenizer.cls_token]
                     segment_ids = [cls_token_segment_id]
 
-                    if use_oscar_settings:
-                        sep_token = tokenizer.sep_token
-                    else:
-                        sep_token = tokenizer.tar_token
+                    if self.args.masked_token_prediction:
+                        # mtp: masked token prediction
+                        # True if region token else False
+                        mtp_mask = [False]
 
                     for i, turn in enumerate(token_dialog_history):
                         if use_oscar_settings:
@@ -251,18 +284,38 @@ class PretrainDataset(Dataset):
                         tokens += [sep_token] + turn
                         segment_ids += [segment_id] * (len(turn) + 1)
 
+                        if self.args.masked_token_prediction:
+                            mtp_mask += [False] * (len(turn) + 1)
+
+                    if use_oscar_settings:
+                        sep_token = tokenizer.sep_token
+                    else:
+                        sep_token = tokenizer.tar_token
+
                     tokens += new_item["region_tokens"]
                     segment_ids += [sep_token_segment_id] * len(
                         new_item["region_tokens"]
                     )
 
+                    if self.args.masked_token_prediction:
+                        mtp_mask += [
+                            True if token in self.detector_classes else False
+                            for token in new_item["region_tokens"]
+                        ]
+
                     tokens += [tokenizer.sep_token]
                     segment_ids += [sep_token_segment_id]
+
+                    if self.args.masked_token_prediction:
+                        mtp_mask += [False]
 
                     tokens += [tokenizer.pad_token] * (MAX_SEQ_LENGTH - len(tokens) - 1)
                     segment_ids += [pad_token_segment_id] * (
                         MAX_SEQ_LENGTH - len(segment_ids) - 1
                     )
+
+                    if self.args.masked_token_prediction:
+                        mtp_mask += [False] * (MAX_SEQ_LENGTH - len(mtp_mask) - 1)
 
                     new_item["target_dialog_tokens"] = tokens
                     new_item[
@@ -273,6 +326,9 @@ class PretrainDataset(Dataset):
                     )
                     new_item["target_dialog_segment_ids"] = segment_ids
 
+                    if self.args.masked_token_prediction:
+                        new_item["masked_token_prediction_mask"] = mtp_mask
+
                     r2r_data.append(new_item)
                 self.data.extend(r2r_data)
                 save_preprocessed_data(
@@ -280,6 +336,7 @@ class PretrainDataset(Dataset):
                 )
 
         if add_r4r_data:
+            assert self.args.masked_token_prediction is False, "Not doing MTP for R4R!"
             preprocessed_data = check_and_load_preprocessed_data(
                 splits, version, dataset_type="PretrainR4R"
             )
@@ -361,17 +418,101 @@ class PretrainDataset(Dataset):
                 save_preprocessed_data(
                     r4r_data, splits, version, dataset_type="PretrainR4R"
                 )
+        if add_rxr_data:
+            assert self.args.masked_token_prediction is False, "Not doing MTP for RxR!"
+            preprocessed_data = check_and_load_preprocessed_data(
+                splits, version, dataset_type="PretrainRxR"
+            )
+            if preprocessed_data is not False:
+                self.data.extend(preprocessed_data)
+            else:
+                rxr_data = []
+                for item in tqdm(
+                    load_datasets(splits, dataset_type="PretrainRxR"),
+                    miniters=1000,
+                    desc="loading PretrainRxR",
+                ):
+
+                    new_item = dict(item)
+                    new_item["inst_idx"] = f"{item['inst_idx']}"
+
+                    token_turn = tokenizer.tokenize(new_item["dialog_history"])
+                    token_dialog_history = [token_turn]
+
+                    if truncate_dialog:
+                        # max_seq_length - 4 as accounting for [CLS], [TAR], Target, [SEP]
+                        token_dialog_history = truncate_dialogs(
+                            token_dialog_history, amount=MAX_DIALOG_LEN, left=True
+                        )
+
+                    new_item["tokens_dialog_history"] = token_dialog_history
+
+                    new_item["region_tokens"] = self._extract_region_labels(
+                        item["scan"], item["viewpoint"], MAX_REGION_LABELS_LENGTH
+                    )
+
+                    tokens = [tokenizer.cls_token]
+                    segment_ids = [cls_token_segment_id]
+
+                    if use_oscar_settings:
+                        sep_token = tokenizer.sep_token
+                    else:
+                        sep_token = tokenizer.tar_token
+
+                    for i, turn in enumerate(token_dialog_history):
+                        if use_oscar_settings:
+                            sep_token = tokenizer.sep_token
+                            segment_id = sep_token_segment_id
+                        else:
+                            if i % 2 == 0:
+                                sep_token = tokenizer.ques_token
+                                segment_id = ques_token_segment_id
+                            else:
+                                sep_token = tokenizer.ans_token
+                                segment_id = ans_token_segment_id
+
+                        tokens += [sep_token] + turn
+                        segment_ids += [segment_id] * (len(turn) + 1)
+
+                    tokens += new_item["region_tokens"]
+                    segment_ids += [sep_token_segment_id] * len(
+                        new_item["region_tokens"]
+                    )
+
+                    tokens += [tokenizer.sep_token]
+                    segment_ids += [sep_token_segment_id]
+
+                    tokens += [tokenizer.pad_token] * (MAX_SEQ_LENGTH - len(tokens) - 1)
+                    segment_ids += [pad_token_segment_id] * (
+                        MAX_SEQ_LENGTH - len(segment_ids) - 1
+                    )
+
+                    new_item["target_dialog_tokens"] = tokens
+                    new_item[
+                        "target_dialog_tokens_id"
+                    ] = tokenizer.convert_tokens_to_ids(tokens)
+                    new_item["target_dialog_tokens_id"] = torch.LongTensor(
+                        new_item["target_dialog_tokens_id"]
+                    )
+                    new_item["target_dialog_segment_ids"] = segment_ids
+
+                    rxr_data.append(new_item)
+                self.data.extend(rxr_data)
+                save_preprocessed_data(
+                    rxr_data, splits, version, dataset_type="PretrainRxR"
+                )
 
         self.splits = splits
 
         logger.info(
-            "PretrainDataset loaded with %d instructions, using splits: %s NDH: %r R2R: %r R4R: %r version: %s"
+            "PretrainDataset loaded with %d instructions, using splits: %s NDH: %r R2R: %r R4R: %r RxR: %r version: %s"
             % (
                 len(self.data),
                 ",".join(splits),
                 add_ndh_data,
                 add_r2r_data,
                 add_r4r_data,
+                add_rxr_data,
                 version,
             )
         )

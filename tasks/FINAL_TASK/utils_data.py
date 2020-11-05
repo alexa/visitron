@@ -12,8 +12,10 @@ import sys
 import time
 from itertools import chain
 
+import lmdb
 import networkx as nx
 import numpy as np
+from tqdm import tqdm
 
 csv.field_size_limit(sys.maxsize)
 
@@ -61,15 +63,17 @@ def load_datasets(splits, dataset_type="NDH"):
     data = []
 
     if dataset_type == "NDH":
-        data_root = "task_data/NDH/data/"
+        data_root = "srv/task_data/NDH/data/"
     elif dataset_type == "R2R":
-        data_root = "task_data/R2R/data/R2R_"
+        data_root = "srv/task_data/R2R/data/R2R_"
     elif dataset_type == "PretrainNDH":
-        data_root = "task_data/pretrain_data/NDH_"
+        data_root = "srv/task_data/pretrain_data/NDH_"
     elif dataset_type == "PretrainR2R":
-        data_root = "task_data/pretrain_data/R2R_"
+        data_root = "srv/task_data/pretrain_data/R2R_"
     elif dataset_type == "PretrainR4R":
-        data_root = "task_data/pretrain_data/R4R_"
+        data_root = "srv/task_data/pretrain_data/R4R_"
+    elif dataset_type == "PretrainRxR":
+        data_root = "srv/task_data/pretrain_data/RxR_"
     else:
         raise NotImplementedError
 
@@ -78,6 +82,61 @@ def load_datasets(splits, dataset_type="NDH"):
         with open(data_root + "%s.json" % split) as f:
             data += json.load(f)
     return data
+
+
+def save_preprocessed_data(data, splits, version, dataset_type="NDH"):
+    if dataset_type == "NDH":
+        data_root = "srv/task_data/NDH/data/"
+    elif dataset_type == "R2R":
+        data_root = "srv/task_data/R2R/data/R2R_"
+    elif dataset_type == "PretrainNDH":
+        data_root = "srv/task_data/pretrain_data/NDH_"
+    elif dataset_type == "PretrainR2R":
+        data_root = "srv/task_data/pretrain_data/R2R_"
+    elif dataset_type == "PretrainR4R":
+        data_root = "srv/task_data/pretrain_data/R4R_"
+    elif dataset_type == "PretrainRxR":
+        data_root = "srv/task_data/pretrain_data/RxR_"
+    else:
+        raise NotImplementedError
+    combined_split = "_".join(splits)
+    path = f"{data_root}{combined_split}_preprocessed_{version}.pickle"
+    logger.info(f"Saving preprocessed data to {path}")
+    with open(path, "wb") as handle:
+        pickle.dump(data, handle, protocol=-1)
+
+
+def check_and_load_preprocessed_data(splits, version, dataset_type="NDH"):
+    if dataset_type == "NDH":
+        data_root = "srv/task_data/NDH/data/"
+    elif dataset_type == "R2R":
+        data_root = "srv/task_data/R2R/data/R2R_"
+    elif dataset_type == "PretrainNDH":
+        data_root = "srv/task_data/pretrain_data/NDH_"
+    elif dataset_type == "PretrainR2R":
+        data_root = "srv/task_data/pretrain_data/R2R_"
+    elif dataset_type == "PretrainR4R":
+        data_root = "srv/task_data/pretrain_data/R4R_"
+    elif dataset_type == "PretrainRxR":
+        data_root = "srv/task_data/pretrain_data/RxR_"
+    else:
+        raise NotImplementedError
+
+    combined_split = "_".join(splits)
+    path = f"{data_root}{combined_split}_preprocessed_{version}.pickle"
+    if os.path.exists(path) and os.path.isfile(path):
+        logger.info(f"Loading preprocessed data from {path}")
+        t_s = time.time()
+        with open(path, "rb") as handle:
+            data = pickle.load(handle)
+        t_e = time.time()
+        logger.info(
+            "Loaded Image Features from {} in time: {:0.2f} mins".format(
+                path, (t_e - t_s) / 60.0
+            )
+        )
+        return data
+    return False
 
 
 def truncate_dialogs(sentences, amount, left=True):
@@ -270,7 +329,61 @@ def asMinutes(s):
     m = math.floor(s / 60)
     s -= m * 60
     return "%dm %ds" % (m, s)
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       e_view_index = key.decode().split("_")
+
+
+def load_detector_classes(UPDOWN_DATA="srv/detector_classes_attributes"):
+    classes = ["__background__"]
+    with open(os.path.join(UPDOWN_DATA, "objects_vocab.txt")) as f:
+        for object in f.readlines():
+            classes.append(object.split(",")[0].lower().strip())
+    return classes
+
+
+class FeaturesReader:
+    def __init__(self, path, use_lmdb=True, in_memory=False):
+        self.use_lmdb = use_lmdb
+
+        if not self.use_lmdb:
+            (
+                self.keys,
+                self.features,
+                self.region_tokens,
+                self.image_w,
+                self.image_h,
+                self.vfov,
+            ) = self.load_features_from_pickle(path)
+        else:
+            img_feature_path = path + ".lmdb"
+            # open database
+            self.env = lmdb.open(
+                img_feature_path,
+                readonly=True,
+                readahead=False,
+                max_readers=1,
+                lock=False,
+            )
+
+            # get keys
+            with self.env.begin(write=False) as txn:
+                self.keys = pickle.loads(txn.get("keys".encode()))
+
+            key = self.keys[0]
+            with self.env.begin(write=False) as txn:
+                item = pickle.loads(txn.get(key))
+                self.image_w = item["image_w"]
+                self.image_h = item["image_h"]
+                self.vfov = item["vfov"]
+
+            region_labels_path = path + "-region_labels.pickle"
+
+            with open(region_labels_path, "rb") as handle:
+                self.region_tokens = pickle.load(handle)
+            logger.info(f"Loaded region labels from {region_labels_path}")
+
+        # get viewpoints
+        self.viewpoints = {}
+        for key in self.keys:
+            scan_id, viewpoint_id, feature_view_index = key.decode().split("_")
             if scan_id not in self.viewpoints:
                 self.viewpoints[scan_id] = set()
             self.viewpoints[scan_id].add(viewpoint_id)

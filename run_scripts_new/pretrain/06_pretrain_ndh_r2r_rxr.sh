@@ -17,7 +17,7 @@ case $1 in
         slurm_info=$2
         ;;
     multi-gpu-ddp)
-        setting="CUDA_VISIBLE_DEVICES=0,1,2,3 $multi_gpu_dist_data_parallel"
+        setting=$multi_gpu_dist_data_parallel
         slurm_info=$2
         ;;
     *)
@@ -33,9 +33,10 @@ arguments="
 --img_feature_file ResNet-101-faster-rcnn-genome-worientation
 --data_dir srv/task_data/NDH/data
 --model_name_or_path srv/oscar_pretrained_models/base-vg-labels/ep_107_1192087
---output_dir srv/results/pretrain/pretrain_masked_lm_1-in-36-viewpoint_ndh_r4r-$1-rerun
+--output_dir srv/results/pretrain/pretrain_masked_lm_1-in-36-viewpoint_ndh_r2r_rxr-$1
 --add_ndh_data
---add_r4r_data
+--add_r2r_data
+--add_rxr_data
 --max_seq_length 768
 --img_feature_dim 2054
 --per_gpu_train_batch_size 2
