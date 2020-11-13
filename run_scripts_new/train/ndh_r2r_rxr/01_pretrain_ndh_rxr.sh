@@ -1,3 +1,4 @@
+dfsd
 cpu="python"
 single_gpu="python"
 multi_gpu_data_parallel="python"
@@ -26,30 +27,33 @@ case $1 in
     ;;
 esac
 
-file="tasks/FINAL_TASK/pretrain.py"
+file="tasks/FINAL_TASK/train.py"
 
 arguments="
 --img_feat_dir srv/img_features
---img_feature_file ResNet-101-faster-rcnn-genome-worientation
+--img_feature_file ResNet-152-imagenet-pytorch.tsv
 --data_dir srv/task_data/NDH/data
---model_name_or_path srv/oscar_pretrained_models/base-vg-labels/ep_107_1192087
---output_dir srv/results/pretrain/pretrain_masked_lm_1-in-36-viewpoint_ndh_r2r-TAR-front-$1
---add_ndh_data
+--model_name_or_path srv/results/pretrain/pretrain_masked_lm_1-in-36-viewpoint_ndh_rxr-multi-gpu-ddp/checkpoints/checkpoint-20000
+--output_dir srv/results/viewpoint/ndh-r2r-rxr_pretrain-ndh-rxr
 --add_r2r_data
+--add_rxr_data
+--feedback_method sample
+--path_type planner_path
 --max_seq_length 768
 --img_feature_dim 2054
---per_gpu_train_batch_size 2
---action_space 36
+--lstm_img_feature_dim 2048
+--per_gpu_train_batch_size 4
+--per_gpu_eval_batch_size 4
 --learning_rate 5e-05
 --weight_decay 0.05
---num_epochs 20
+--num_iterations 50000
 --warmup_steps 0
 --drop_out 0.3
 --logging_steps 10
+--eval_logging_steps 500
 --save_steps 100
 --seed 88
 --num_workers 0
---slurm_info '$slurm_info'
 "
 # --evaluate_during_training
 

@@ -59,13 +59,17 @@ def load_nav_graphs(scans):
     return graphs
 
 
-def load_datasets(splits, dataset_type="NDH"):
-    data = []
-
+def get_data_root(dataset_type="NDH"):
     if dataset_type == "NDH":
         data_root = "srv/task_data/NDH/data/"
+    elif dataset_type == "CVDN":
+        data_root = "srv/task_data/CVDN/data/"
     elif dataset_type == "R2R":
         data_root = "srv/task_data/R2R/data/R2R_"
+    elif dataset_type == "R4R":
+        data_root = "srv/task_data/R4R/data/R4R_"
+    elif dataset_type == "RxR":
+        data_root = "srv/task_data/RxR/data"
     elif dataset_type == "PretrainNDH":
         data_root = "srv/task_data/pretrain_data/NDH_"
     elif dataset_type == "PretrainR2R":
@@ -76,6 +80,34 @@ def load_datasets(splits, dataset_type="NDH"):
         data_root = "srv/task_data/pretrain_data/RxR_"
     else:
         raise NotImplementedError
+    return data_root
+
+
+# def load_datasets(splits, dataset_type="NDH"):
+#     data = []
+
+#     data_root = get_data_root(dataset_type)
+
+#     for split in splits:
+#         assert split in ["train", "val_seen", "val_unseen", "test"]
+#         with open(data_root + "%s.json" % split) as f:
+#             data += json.load(f)
+#     return data
+
+
+def load_datasets(splits, dataset_type="NDH"):
+    data = []
+
+    data_root = get_data_root(dataset_type)
+
+    if dataset_type == "RxR":
+        import jsonlines
+
+        assert splits == ["train"]
+        with jsonlines.open(f"{data_root}/rxr_train_guide.jsonl") as f:
+            for line in f.iter():
+                data.append(line)
+        return data
 
     for split in splits:
         assert split in ["train", "val_seen", "val_unseen", "test"]
@@ -84,21 +116,63 @@ def load_datasets(splits, dataset_type="NDH"):
     return data
 
 
+def load_classifier_data(splits):
+    data = []
+    raw_data = []
+
+    data_root = get_data_root("CVDN")
+    for split in splits:
+        assert split in ["train", "val_seen", "val_unseen", "test"]
+        data_path = data_root + "%s.json" % split
+        with open(data_path) as f:
+            items = json.load(f)
+        raw_data.extend(items)
+
+    for item in raw_data:
+        item["inst_idx"] = str(item["idx"])
+        item["planner_path"] = item["planner_nav_steps"]
+        item["player_path"] = item["nav_steps"]
+        item["nav_history"] = item["player_path"]
+
+        heading, elevation = 2.0, 17.5
+        if "nav_camera" in item and len(item["nav_camera"]) > 0:
+            nav_camera = item["nav_camera"][0]
+            if "message" in nav_camera:
+                heading = nav_camera["message"][-1]["heading"]
+                elevation = nav_camera["message"][-1]["elevation"]
+        item["start_pano"] = {
+            "heading": heading,
+            "elevation": elevation,
+            "pano": item["planner_nav_steps"][0],
+        }
+        dialog = {0: []}
+        last_timestep = 0
+
+        for index, turn in enumerate(item["dialog_history"]):
+            if index % 2 == 0:
+                assert turn["role"] == "navigator"
+                timestep = turn["nav_idx"]
+                message = turn["message"]
+                dialog_history = dialog[last_timestep]
+                dialog_history.append(message)
+                dialog[timestep] = dialog_history
+                last_timestep = timestep
+            else:
+                assert turn["role"] == "oracle"
+                assert timestep == turn["nav_idx"]
+                message = turn["message"]
+                dialog_history = dialog[timestep]
+                dialog_history.append(message)
+                dialog[timestep] = dialog_history
+
+        item["dialog_history"] = dialog
+        item["request_locations"] = list(dialog.keys())
+        data.append(item)
+    return data
+
+
 def save_preprocessed_data(data, splits, version, dataset_type="NDH"):
-    if dataset_type == "NDH":
-        data_root = "srv/task_data/NDH/data/"
-    elif dataset_type == "R2R":
-        data_root = "srv/task_data/R2R/data/R2R_"
-    elif dataset_type == "PretrainNDH":
-        data_root = "srv/task_data/pretrain_data/NDH_"
-    elif dataset_type == "PretrainR2R":
-        data_root = "srv/task_data/pretrain_data/R2R_"
-    elif dataset_type == "PretrainR4R":
-        data_root = "srv/task_data/pretrain_data/R4R_"
-    elif dataset_type == "PretrainRxR":
-        data_root = "srv/task_data/pretrain_data/RxR_"
-    else:
-        raise NotImplementedError
+    data_root = get_data_root(dataset_type)
     combined_split = "_".join(splits)
     path = f"{data_root}{combined_split}_preprocessed_{version}.pickle"
     logger.info(f"Saving preprocessed data to {path}")
@@ -111,6 +185,10 @@ def check_and_load_preprocessed_data(splits, version, dataset_type="NDH"):
         data_root = "srv/task_data/NDH/data/"
     elif dataset_type == "R2R":
         data_root = "srv/task_data/R2R/data/R2R_"
+    elif dataset_type == "R4R":
+        data_root = "srv/task_data/R4R/data/R4R_"
+    elif dataset_type == "RxR":
+        data_root = "srv/task_data/RxR/data/RxR_"
     elif dataset_type == "PretrainNDH":
         data_root = "srv/task_data/pretrain_data/NDH_"
     elif dataset_type == "PretrainR2R":
@@ -183,96 +261,96 @@ def truncate_dialogs(sentences, amount, left=True):
         return truncated_sentences
 
 
-def load_per_view_img_pickle_features(img_feat_dir, img_feature_file):
-    t_s = time.time()
+# def load_per_view_img_pickle_features(img_feat_dir, img_feature_file):
+#     t_s = time.time()
 
-    img_feature_path = os.path.join(img_feat_dir, img_feature_file)
+#     img_feature_path = os.path.join(img_feat_dir, img_feature_file)
 
-    logger.info(f"Loading Image Features from {img_feature_path}")
+#     logger.info(f"Loading Image Features from {img_feature_path}")
 
-    with open(img_feature_path, "rb") as f:
-        loaded_feature_data = pickle.load(f)
+#     with open(img_feature_path, "rb") as f:
+#         loaded_feature_data = pickle.load(f)
 
-    image_w = loaded_feature_data[0]["image_w"]
-    image_h = loaded_feature_data[0]["image_h"]
-    vfov = loaded_feature_data[0]["vfov"]
+#     image_w = loaded_feature_data[0]["image_w"]
+#     image_h = loaded_feature_data[0]["image_h"]
+#     vfov = loaded_feature_data[0]["vfov"]
 
-    features = {"features": {}, "image_w": image_w, "image_h": image_h, "vfov": vfov}
-    region_tokens = {}
+#     features = {"features": {}, "image_w": image_w, "image_h": image_h, "vfov": vfov}
+#     region_tokens = {}
 
-    for item in loaded_feature_data:
-        long_id = f"{item['scanId']}_{item['viewpointId']}_{item['featureViewIndex']}"
+#     for item in loaded_feature_data:
+#         long_id = f"{item['scanId']}_{item['viewpointId']}_{item['featureViewIndex']}"
 
-        features["features"][long_id] = item["features"]
+#         features["features"][long_id] = item["features"]
 
-        region_tokens[long_id] = item["region_tokens"]
+#         region_tokens[long_id] = item["region_tokens"]
 
-    t_e = time.time()
-    logger.info(
-        "Loaded Image Features from {} in time: {:0.2f} mins".format(
-            img_feature_path, (t_e - t_s) / 60.0
-        )
-    )
+#     t_e = time.time()
+#     logger.info(
+#         "Loaded Image Features from {} in time: {:0.2f} mins".format(
+#             img_feature_path, (t_e - t_s) / 60.0
+#         )
+#     )
 
-    return features, region_tokens
-
-
-def load_img_pickle_features(img_feat_dir, img_feature_file, candidate_feature_file):
-    t_s = time.time()
-
-    img_feature_path = os.path.join(img_feat_dir, img_feature_file)
-
-    logger.info(f"Loading Image Features from {img_feature_path}")
-
-    with open(img_feature_path, "rb") as f:
-        loaded_feature_data = pickle.load(f)
-
-    image_w = loaded_feature_data[0]["image_w"]
-    image_h = loaded_feature_data[0]["image_h"]
-    vfov = loaded_feature_data[0]["vfov"]
-
-    features = {"features": {}, "image_w": image_w, "image_h": image_h, "vfov": vfov}
-    region_tokens = {}
-
-    for item in loaded_feature_data:
-        long_id = f"{item['scanId']}_{item['viewpointId']}"
-
-        features["features"][long_id] = item["features"]
-
-        region_tokens[long_id] = item["region_tokens"]
-
-    t_e = time.time()
-    logger.info(
-        "Loaded Image Features from {} in time: {:0.2f} mins".format(
-            img_feature_path, (t_e - t_s) / 60.0
-        )
-    )
-
-    candidate_feature_path = os.path.join(img_feat_dir, candidate_feature_file)
-
-    logger.info(f"Loading Candidate Image Features from {candidate_feature_path}")
-
-    with open(candidate_feature_path, "rb") as f:
-        candidate_feature_data = pickle.load(f)
-
-    cand_features = {}
-
-    for item in candidate_feature_data:
-        long_id = f"{item['scanId']}_{item['viewpointId']}"
-
-        cand_features[long_id] = item["features"]
-
-    t_e = time.time()
-    logger.info(
-        "Loaded Candidate Image Features from {} in time: {:0.2f} mins".format(
-            candidate_feature_path, (t_e - t_s) / 60.0
-        )
-    )
-
-    return features, region_tokens, cand_features
+#     return features, region_tokens
 
 
-def read_img_features(path=None, feature_size=2048, blind=False):
+# def load_img_pickle_features(img_feat_dir, img_feature_file, candidate_feature_file):
+#     t_s = time.time()
+
+#     img_feature_path = os.path.join(img_feat_dir, img_feature_file)
+
+#     logger.info(f"Loading Image Features from {img_feature_path}")
+
+#     with open(img_feature_path, "rb") as f:
+#         loaded_feature_data = pickle.load(f)
+
+#     image_w = loaded_feature_data[0]["image_w"]
+#     image_h = loaded_feature_data[0]["image_h"]
+#     vfov = loaded_feature_data[0]["vfov"]
+
+#     features = {"features": {}, "image_w": image_w, "image_h": image_h, "vfov": vfov}
+#     region_tokens = {}
+
+#     for item in loaded_feature_data:
+#         long_id = f"{item['scanId']}_{item['viewpointId']}"
+
+#         features["features"][long_id] = item["features"]
+
+#         region_tokens[long_id] = item["region_tokens"]
+
+#     t_e = time.time()
+#     logger.info(
+#         "Loaded Image Features from {} in time: {:0.2f} mins".format(
+#             img_feature_path, (t_e - t_s) / 60.0
+#         )
+#     )
+
+#     candidate_feature_path = os.path.join(img_feat_dir, candidate_feature_file)
+
+#     logger.info(f"Loading Candidate Image Features from {candidate_feature_path}")
+
+#     with open(candidate_feature_path, "rb") as f:
+#         candidate_feature_data = pickle.load(f)
+
+#     cand_features = {}
+
+#     for item in candidate_feature_data:
+#         long_id = f"{item['scanId']}_{item['viewpointId']}"
+
+#         cand_features[long_id] = item["features"]
+
+#     t_e = time.time()
+#     logger.info(
+#         "Loaded Candidate Image Features from {} in time: {:0.2f} mins".format(
+#             candidate_feature_path, (t_e - t_s) / 60.0
+#         )
+#     )
+
+#     return features, region_tokens, cand_features
+
+
+def read_tsv_img_features(path=None, feature_size=2048, blind=False):
     if path:
         logger.info("Loading image features from %s" % path)
         if blind:
@@ -354,6 +432,7 @@ class FeaturesReader:
             ) = self.load_features_from_pickle(path)
         else:
             img_feature_path = path + ".lmdb"
+            logger.info(f"Loading lmdb features from {img_feature_path}")
             # open database
             self.env = lmdb.open(
                 img_feature_path,

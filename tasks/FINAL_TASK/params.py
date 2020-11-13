@@ -66,6 +66,19 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--tar_back",
+    default=False,
+    action="store_true",
+    help="Use [TAR] after dialog",
+)
+
+parser.add_argument(
+    '--no_oscar_setting',
+    dest='oscar_setting',
+    action='store_false'
+)
+
+parser.add_argument(
     "--add_ndh_data",
     default=True,
     action="store_true",
@@ -201,6 +214,11 @@ parser.add_argument(
     help="Only eval the model, no training",
 )
 parser.add_argument(
+    "--test_only",
+    action="store_true",
+    help="Test submission for EvalAI",
+)
+parser.add_argument(
     "--eval_iters",
     default=-1,
     type=int,
@@ -274,7 +292,6 @@ parser.add_argument(
     action="store_true",
     help="Whether to do masked token prediction using token classes or not. Default: Masked LM for tokens",
 )
-
 
 
 ## Logging parameters

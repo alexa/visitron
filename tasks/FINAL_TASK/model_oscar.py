@@ -384,6 +384,9 @@ class PreTrainOscar(BertPreTrainedModel):
         lang_part = outputs[0]
 
         prediction_scores = self.mlmhead(lang_part)
+        # import pdb
+
+        # pdb.set_trace()
         mask_loss = self.criterion(
             prediction_scores.view(-1, self.config.vocab_size), labels.view(-1)
         )
@@ -410,7 +413,4 @@ class PreTrainOscar(BertPreTrainedModel):
 
         action_accuracy = (
             torch.sum(predicted_action == next_action).type(torch.float)
-            / predicted_action.shape[0]
-        )
-
-        return loss, mask_loss, next_loss, words_accuracy, action_accuracy
+            / pred

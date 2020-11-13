@@ -10,7 +10,6 @@ import sys
 
 import MatterSim
 import networkx as nx
-
 # import csv
 import numpy as np
 import torch
@@ -18,14 +17,9 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from get_oscar_model import special_tokens_dict
-from utils_data import (
-    check_and_load_preprocessed_data,
-    load_datasets,
-    load_detector_classes,
-    load_nav_graphs,
-    save_preprocessed_data,
-    truncate_dialogs,
-)
+from utils_data import (check_and_load_preprocessed_data, load_datasets,
+                        load_detector_classes, load_nav_graphs,
+                        save_preprocessed_data, truncate_dialogs)
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +70,7 @@ class PretrainDataset(Dataset):
     ):
         super(PretrainDataset, self).__init__()
 
-        assert version in ["v1", "v2"]
+        assert version in ["v1", "v2", "v3", "v4", "v5"]
         assert tokenizer is not None
         assert (add_ndh_data or add_r2r_data or add_r4r_data or add_rxr_data) is True
 
@@ -85,7 +79,9 @@ class PretrainDataset(Dataset):
         self.features_reader = features_reader
         self.data = []
 
-        use_oscar_settings = True
+        use_oscar_settings = args.oscar_setting
+
+        TAR_BACK = args.tar_back
 
         cls_token_segment_id = 0
         pad_token_segment_id = 0
@@ -145,6 +141,18 @@ class PretrainDataset(Dataset):
                     tokens = [tokenizer.cls_token]
                     segment_ids = [cls_token_segment_id]
 
+                    if not TAR_BACK:
+                        if use_oscar_settings:
+                            sep_token = tokenizer.sep_token
+                        else:
+                            sep_token = tokenizer.tar_token
+
+                        tokens += [sep_token] + token_target
+                        segment_ids += [tar_token_segment_id] * (len(token_target) + 1)
+
+                    if self.args.masked_token_prediction:
+                        mtp_mask += [False] * (len(token_target) + 1)
+
                     if self.args.masked_token_prediction:
                         # mtp: masked token prediction
                         # True if region token else False
@@ -168,16 +176,14 @@ class PretrainDataset(Dataset):
                         if self.args.masked_token_prediction:
                             mtp_mask += [False] * (len(turn) + 1)
 
-                    if use_oscar_settings:
-                        sep_token = tokenizer.sep_token
-                    else:
-                        sep_token = tokenizer.tar_token
+                    if TAR_BACK:
+                        if use_oscar_settings:
+                            sep_token = tokenizer.sep_token
+                        else:
+                            sep_token = tokenizer.tar_token
 
-                    tokens += [sep_token] + token_target
-                    segment_ids += [tar_token_segment_id] * (len(token_target) + 1)
-
-                    if self.args.masked_token_prediction:
-                        mtp_mask += [False] * (len(token_target) + 1)
+                        tokens += [sep_token] + token_target
+                        segment_ids += [tar_token_segment_id] * (len(token_target) + 1)
 
                     tokens += [tokenizer.sep_token]
                     segment_ids += [sep_token_segment_id]
@@ -287,10 +293,8 @@ class PretrainDataset(Dataset):
                         if self.args.masked_token_prediction:
                             mtp_mask += [False] * (len(turn) + 1)
 
-                    if use_oscar_settings:
-                        sep_token = tokenizer.sep_token
-                    else:
-                        sep_token = tokenizer.tar_token
+                    tokens += [tokenizer.sep_token]
+                    segment_ids += [sep_token_segment_id]
 
                     tokens += new_item["region_tokens"]
                     segment_ids += [sep_token_segment_id] * len(
@@ -371,11 +375,6 @@ class PretrainDataset(Dataset):
                     tokens = [tokenizer.cls_token]
                     segment_ids = [cls_token_segment_id]
 
-                    if use_oscar_settings:
-                        sep_token = tokenizer.sep_token
-                    else:
-                        sep_token = tokenizer.tar_token
-
                     for i, turn in enumerate(token_dialog_history):
                         if use_oscar_settings:
                             sep_token = tokenizer.sep_token
@@ -390,6 +389,9 @@ class PretrainDataset(Dataset):
 
                         tokens += [sep_token] + turn
                         segment_ids += [segment_id] * (len(turn) + 1)
+
+                    tokens += [tokenizer.sep_token]
+                    segment_ids += [sep_token_segment_id]
 
                     tokens += new_item["region_tokens"]
                     segment_ids += [sep_token_segment_id] * len(
@@ -454,11 +456,6 @@ class PretrainDataset(Dataset):
                     tokens = [tokenizer.cls_token]
                     segment_ids = [cls_token_segment_id]
 
-                    if use_oscar_settings:
-                        sep_token = tokenizer.sep_token
-                    else:
-                        sep_token = tokenizer.tar_token
-
                     for i, turn in enumerate(token_dialog_history):
                         if use_oscar_settings:
                             sep_token = tokenizer.sep_token
@@ -473,6 +470,9 @@ class PretrainDataset(Dataset):
 
                         tokens += [sep_token] + turn
                         segment_ids += [segment_id] * (len(turn) + 1)
+
+                    tokens += [tokenizer.sep_token]
+                    segment_ids += [sep_token_segment_id]
 
                     tokens += new_item["region_tokens"]
                     segment_ids += [sep_token_segment_id] * len(

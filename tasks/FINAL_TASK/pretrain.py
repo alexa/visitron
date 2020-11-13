@@ -18,16 +18,11 @@ from tqdm import tqdm
 from data_loader_pretrain import PretrainDataset
 from get_oscar_model import load_oscar_model
 from oscar.transformers_src.pytorch_transformers import (
-    AdamW,
-    BertConfig,
-    BertTokenizer,
-    WarmupConstantSchedule,
-    WarmupLinearSchedule,
-    modeling_bert,
-)
+    AdamW, BertConfig, BertTokenizer, WarmupConstantSchedule,
+    WarmupLinearSchedule, modeling_bert)
 from params import args
 from utils import set_seed
-from utils_data import FeaturesReader, load_per_view_img_pickle_features, timeSince
+from utils_data import FeaturesReader, timeSince
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +32,7 @@ def train(args, features_reader):
     model, tokenizer, config = load_oscar_model(
         args,
         "PreTrainOscar",
-        add_new_extra_embeds=False,
+        add_new_extra_embeds=(not args.oscar_setting),
         finetuned=args.eval_only,
     )
 
@@ -49,7 +44,11 @@ def train(args, features_reader):
 
     model.to(args.device)
 
-    version = "v1"
+    version = "v3"  # tar front
+    if args.tar_back:
+        version = "v4"  # tar back
+    if args.oscar_setting is False:
+        version = "v5"  # adding new embeds
     if args.masked_token_prediction:
         version = "v2"
 
@@ -254,12 +253,23 @@ def val(args, features_reader, list_iter_no):
         model, tokenizer, config = load_oscar_model(
             args,
             "PreTrainOscar",
-            add_new_extra_embeds=False,
+            add_new_extra_embeds=(not args.oscar_setting),
             finetuned=args.eval_only,
         )
         model.to(args.device)
         model.eval()
 
+        version = "v3"  # tar front
+        if args.tar_back:
+            version = "v4"  # tar back
+        if args.oscar_setting is False:
+            version = "v5"  # adding new embeds
+        if args.masked_token_prediction:
+            version = "v2"
+
+        import pdb
+
+        pdb.set_trace()
         ndh_val_seen_dataset = PretrainDataset(
             args=args,
             splits=["val_seen"],
@@ -270,7 +280,7 @@ def val(args, features_reader, list_iter_no):
             add_r2r_data=False,
             add_r4r_data=False,
             add_rxr_data=False,
-            version="v1",
+            version=version,
         )
 
         ndh_val_unseen_dataset = PretrainDataset(
@@ -283,7 +293,7 @@ def val(args, features_reader, list_iter_no):
             add_r2r_data=False,
             add_r4r_data=False,
             add_rxr_data=False,
-            version="v1",
+            version=version,
         )
 
         val_datasets = {
@@ -302,7 +312,7 @@ def val(args, features_reader, list_iter_no):
                 add_r2r_data=True,
                 add_r4r_data=False,
                 add_rxr_data=False,
-                version="v1",
+                version=version,
             )
 
             r2r_val_unseen_dataset = PretrainDataset(
@@ -315,7 +325,7 @@ def val(args, features_reader, list_iter_no):
                 add_r2r_data=True,
                 add_r4r_data=False,
                 add_rxr_data=False,
-                version="v1",
+                version=version,
             )
 
             val_datasets["r2r_val_seen"] = r2r_val_seen_dataset
@@ -332,7 +342,7 @@ def val(args, features_reader, list_iter_no):
                 add_r2r_data=False,
                 add_r4r_data=True,
                 add_rxr_data=False,
-                version="v1",
+                version=version,
             )
 
             r4r_val_unseen_dataset = PretrainDataset(
@@ -345,7 +355,7 @@ def val(args, features_reader, list_iter_no):
                 add_r2r_data=False,
                 add_r4r_data=True,
                 add_rxr_data=False,
-                version="v1",
+                version=version,
             )
 
             val_datasets["r4r_val_seen"] = r4r_val_seen_dataset
@@ -362,7 +372,7 @@ def val(args, features_reader, list_iter_no):
                 add_r2r_data=False,
                 add_r4r_data=False,
                 add_rxr_data=True,
-                version="v1",
+                version=version,
             )
 
             rxr_val_unseen_dataset = PretrainDataset(
@@ -375,7 +385,7 @@ def val(args, features_reader, list_iter_no):
                 add_r2r_data=False,
                 add_r4r_data=False,
                 add_rxr_data=True,
-                version="v1",
+                version=version,
             )
 
             val_datasets["rxr_val_seen"] = rxr_val_seen_dataset

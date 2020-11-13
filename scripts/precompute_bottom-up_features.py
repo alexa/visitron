@@ -60,8 +60,8 @@ TSV_FILENAMES = [
     "viewElevation",
 ]
 
-# DRY_RUN = True
-DRY_RUN = False
+DRY_RUN = True
+# DRY_RUN = False
 
 parser = argparse.ArgumentParser()
 
@@ -526,11 +526,12 @@ if __name__ == "__main__":
     # p.map(build_tsv, gpu_ids)
     # merge_tsvs()
 
-    # build_tsv(gpu_id=args.gpu_id)
-    start = time.time()
-    merge_tsvs()
-    now = time.time()
-    print("Time taken for merging the tsv file: %0.4f mins" % ((now - start) / 60))
+    build_tsv(gpu_id=args.gpu_id)
+
+    # start = time.time()
+    # merge_tsvs()
+    # now = time.time()
+    # print("Time taken for merging the tsv file: %0.4f mins" % ((now - start) / 60))
 
     # data = read_tsv(MERGED)
     # with open(MERGED_PICKLE, "wb") as handle:

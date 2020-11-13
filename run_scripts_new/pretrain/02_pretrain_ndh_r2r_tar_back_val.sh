@@ -1,7 +1,7 @@
 cpu="python"
 single_gpu="python"
 multi_gpu_data_parallel="python"
-multi_gpu_dist_data_parallel="python -m torch.distributed.launch --nproc_per_node 8 --nnodes 1 --node_rank 0"
+multi_gpu_dist_data_parallel="python -m torch.distributed.launch --nproc_per_node 4 --nnodes 1 --node_rank 0"
 
 case $1 in
     cpu)
@@ -36,7 +36,7 @@ done
 
 # eval_iters="$eval_iters "
 
-exp_name=pretrain_masked_lm_1-in-36-viewpoint_ndh_r2r-TAR-front-multi-gpu-ddp
+exp_name=pretrain_masked_lm_1-in-36-viewpoint_ndh_r2r-TAR-back-multi-gpu-ddp
 
 arguments="
 --img_feat_dir srv/img_features
@@ -44,6 +44,7 @@ arguments="
 --data_dir srv/task_data/NDH/data
 --model_name_or_path srv/results/pretrain/$exp_name/checkpoints/
 --output_dir srv/results/pretrain/$exp_name-val
+--tar_back
 --max_seq_length 768
 --img_feature_dim 2054
 --action_space 36
