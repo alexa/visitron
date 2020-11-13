@@ -10,6 +10,7 @@ import sys
 
 import MatterSim
 import networkx as nx
+
 # import csv
 import numpy as np
 import torch
@@ -17,9 +18,14 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from get_oscar_model import special_tokens_dict
-from utils_data import (check_and_load_preprocessed_data, load_datasets,
-                        load_detector_classes, load_nav_graphs,
-                        save_preprocessed_data, truncate_dialogs)
+from utils_data import (
+    check_and_load_preprocessed_data,
+    load_datasets,
+    load_detector_classes,
+    load_nav_graphs,
+    save_preprocessed_data,
+    truncate_dialogs,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -675,6 +681,8 @@ class PretrainDataset(Dataset):
         labels = labels.tolist() + [-1] * img_features.shape[0]
         labels = torch.LongTensor(labels)
 
+        if self.args.no_action_grounding:
+            target_view_index = -1
         output = {
             "input_ids": inputs,
             "labels": labels,

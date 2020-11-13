@@ -267,9 +267,6 @@ def val(args, features_reader, list_iter_no):
         if args.masked_token_prediction:
             version = "v2"
 
-        import pdb
-
-        pdb.set_trace()
         ndh_val_seen_dataset = PretrainDataset(
             args=args,
             splits=["val_seen"],

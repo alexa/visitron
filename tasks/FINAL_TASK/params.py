@@ -58,11 +58,19 @@ parser.add_argument(
     choices=["oscar", "att-lstm"],
     help="Which agent to use",
 )
+
 parser.add_argument(
     "--no_pretrained_model",
     default=False,
     action="store_true",
     help="Use no pretrained weights for Oscar encoder",
+)
+
+parser.add_argument(
+    "--no_action_grounding",
+    default=False,
+    action="store_true",
+    help="Do not use Action Grouding Pretraining",
 )
 
 parser.add_argument(
@@ -72,11 +80,7 @@ parser.add_argument(
     help="Use [TAR] after dialog",
 )
 
-parser.add_argument(
-    '--no_oscar_setting',
-    dest='oscar_setting',
-    action='store_false'
-)
+parser.add_argument("--no_oscar_setting", dest="oscar_setting", action="store_false")
 
 parser.add_argument(
     "--add_ndh_data",

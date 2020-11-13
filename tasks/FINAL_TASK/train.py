@@ -20,8 +20,13 @@ from data_loader import VLNDataLoader, VLNDataloader_collate_fn, VLNDataset
 from eval import Evaluation
 from get_oscar_model import MODEL_CLASS, load_oscar_model, special_tokens_dict
 from oscar.transformers_src.pytorch_transformers import (
-    AdamW, BertConfig, BertTokenizer, WarmupConstantSchedule,
-    WarmupLinearSchedule, modeling_bert)
+    AdamW,
+    BertConfig,
+    BertTokenizer,
+    WarmupConstantSchedule,
+    WarmupLinearSchedule,
+    modeling_bert,
+)
 from params import args
 from utils import Tokenizer, read_vocab, set_seed, setup_vocab
 from utils_data import read_tsv_img_features, timeSince
@@ -158,8 +163,8 @@ def train(args, features):
                 os.path.join(output_dir, "encoder"), os.path.join(output_dir, "decoder")
             )
             torch.save(args, os.path.join(output_dir, "training_args.bin"))
-            if not args.no_pretrained_model:
-                tokenizer.save_pretrained(output_dir)
+            # if not args.no_pretrained_model:
+            tokenizer.save_pretrained(output_dir)
             logger.info(f"Saving model checkpoint {iter_no} to {output_dir}")
 
         logger.info(
@@ -502,10 +507,10 @@ def test_submission(args, features, list_iter_no):
             )
         )
 
-        df = pd.DataFrame(data_log)
-        df.set_index("iteration")
-        df_path = os.path.join(args.output_dir, "results", f"{iter_no}-log.csv")
-        df.to_csv(df_path)
+        # df = pd.DataFrame(data_log)
+        # df.set_index("iteration")
+        # df_path = os.path.join(args.output_dir, "results", f"{iter_no}-log.csv")
+        # df.to_csv(df_path)
     sys.exit()
 
 
@@ -593,7 +598,8 @@ def main():
     # elif args.agent == "att-lstm":
 
     features = read_tsv_img_features(
-        os.path.join(args.img_feat_dir, args.img_feature_file)
+        path=os.path.join(args.img_feat_dir, args.img_feature_file),
+        feature_size=args.lstm_img_feature_dim,
     )
 
     if args.test_only:

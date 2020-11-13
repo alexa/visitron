@@ -34,7 +34,7 @@ for (( COUNTER=10; COUNTER<=50000; COUNTER+=100 )); do  # 10 to 40010 gap 500
     eval_iters="$eval_iters $COUNTER"
 done
 
-eval_iters="3710"
+# eval_iters="3710"
 
 exp_name=srv_2/results/viewpoint-2/ndh_rxr-pretrain_ndh_r2r
 
@@ -48,7 +48,7 @@ arguments="
 --max_seq_length 768
 --img_feature_dim 2054
 --lstm_img_feature_dim 2048
---test_only
+--eval_only
 --eval_iter $eval_iters
 --per_gpu_eval_batch_size 8
 --drop_out 0.3

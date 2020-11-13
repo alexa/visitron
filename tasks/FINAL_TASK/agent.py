@@ -111,8 +111,6 @@ class Agent(BaseAgent):
         self.args = args
         self.tokenizer = tokenizer
 
-        self.args.no_pretrained_model = False
-
         self.pad_token_id = 0
         # Models
 
@@ -162,22 +160,22 @@ class Agent(BaseAgent):
         sequence length (to enable PyTorch packing)."""
 
         seq_tensor = np.array([ob["target_dialog_tokens_id"] for ob in obs])
-        if not self.args.no_pretrained_model:
-            segment_ids = np.array([ob["target_dialog_segment_ids"] for ob in obs])
+        # if not self.args.no_pretrained_model:
+        segment_ids = np.array([ob["target_dialog_segment_ids"] for ob in obs])
 
         seq_lengths = np.argmax(seq_tensor == self.pad_token_id, axis=1)
         seq_lengths[seq_lengths == 0] = seq_tensor.shape[1]  # Full length
 
         seq_tensor = torch.from_numpy(seq_tensor)
-        if not self.args.no_pretrained_model:
-            segment_ids = torch.from_numpy(segment_ids)
+        # if not self.args.no_pretrained_model:
+        segment_ids = torch.from_numpy(segment_ids)
         seq_lengths = torch.from_numpy(seq_lengths)
 
         # Sort sequences by lengths
         seq_lengths, perm_idx = seq_lengths.sort(0, True)  # True -> descending
         sorted_tensor = seq_tensor[perm_idx]
-        if not self.args.no_pretrained_model:
-            sorted_segment_ids = segment_ids[perm_idx]
+        # if not self.args.no_pretrained_model:
+        sorted_segment_ids = segment_ids[perm_idx]
         mask = (sorted_tensor == self.pad_token_id)[
             :, : seq_lengths[0]
         ]  # seq_lengths[0] is the Maximum length
@@ -186,9 +184,7 @@ class Agent(BaseAgent):
             Variable(sorted_tensor, requires_grad=False).long().to(self.args.device),
             Variable(sorted_segment_ids, requires_grad=False)
             .long()
-            .to(self.args.device)
-            if not self.args.no_pretrained_model
-            else None,
+            .to(self.args.device),
             mask.byte().to(self.args.device),
             list(seq_lengths),
             list(perm_idx),
@@ -355,23 +351,23 @@ class Agent(BaseAgent):
         batch_size = len(obs)
 
         # Reorder the language input for the encoder (do not ruin the original code)
-        if self.args.no_pretrained_model:
-            seq, _, seq_mask, seq_lengths, perm_idx = self._sort_batch(batch)
-        else:
-            seq, segment_ids, seq_mask, seq_lengths, perm_idx = self._sort_batch(batch)
+        # if self.args.no_pretrained_model:
+        #     seq, _, seq_mask, seq_lengths, perm_idx = self._sort_batch(batch)
+        # else:
+        seq, segment_ids, seq_mask, seq_lengths, perm_idx = self._sort_batch(batch)
 
         seq_lengths = torch.tensor(seq_lengths)
         perm_obs = obs[perm_idx]
 
-        if self.args.no_pretrained_model:
-            ctx, h_t, c_t = self.encoder(seq, seq_lengths)
-        else:
-            ctx, h_t, c_t = self.encoder(
-                inputs=seq,
-                lengths=seq_lengths,
-                mask=seq_mask,
-                token_type_ids=segment_ids,
-            )
+        # if self.args.no_pretrained_model:
+        #     ctx, h_t, c_t = self.encoder(seq, seq_lengths)
+        # else:
+        ctx, h_t, c_t = self.encoder(
+            inputs=seq,
+            lengths=seq_lengths,
+            mask=seq_mask,
+            token_type_ids=segment_ids,
+        )
         ctx_mask = seq_mask
 
         # Record starting point
