@@ -413,4 +413,7 @@ class PreTrainOscar(BertPreTrainedModel):
 
         action_accuracy = (
             torch.sum(predicted_action == next_action).type(torch.float)
-            / pred
+            / predicted_action.shape[0]
+        )
+
+        return loss, mask_loss, next_loss, words_accuracy, action_accuracy
