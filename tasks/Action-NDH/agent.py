@@ -3,25 +3,23 @@
 
 import json
 import os
-import sys
-import numpy as np
 import random
+import sys
 import time
-import utils
+from collections import OrderedDict
 
+import numpy as np
 import torch
-import torch.nn as nn
-import torch.distributions as D
 import torch.distributed as dist
-from torch.autograd import Variable
-from torch import optim
+import torch.distributions as D
+import torch.nn as nn
 import torch.nn.functional as F
-
+from torch import optim
+from torch.autograd import Variable
 from torch.optim import Adam
 
-import model_lstm
-
-from collections import OrderedDict
+import model
+import utils
 
 
 class BaseAgent(object):
@@ -69,7 +67,7 @@ class BaseAgent(object):
                     break
 
 
-class LSTMAgent(BaseAgent):
+class Agent(BaseAgent):
     """ An agent based on Oscar model. """
 
     # For now, the agent can't pick which forward move to make - just the one in the middle
@@ -98,25 +96,33 @@ class LSTMAgent(BaseAgent):
     feedback_options = ["teacher", "argmax", "sample"]
 
     def __init__(
-        self, args, tokenizer, dataloader, results_path, word_embedding, episode_len=20,
+        self,
+        args,
+        tokenizer,
+        dataloader,
+        results_path,
+        word_embedding=None,
+        bert=None,
+        episode_len=20,
     ):
-        super(LSTMAgent, self).__init__(dataloader, results_path)
+        super(Agent, self).__init__(dataloader, results_path)
         self.args = args
         self.tokenizer = tokenizer
 
         self.pad_token_id = 0
         # Models
         enc_hidden_size = args.rnn_dim // 2 if args.bidir else args.rnn_dim
-        self.encoder = model_lstm.EncoderLSTM(
-            args,
-            word_embedding,
-            args.word_embed_size,
-            enc_hidden_size,
-            args.dropout,
-            args.bidir,
+
+        self.encoder = model.OscarEncoder(
+            args=args,
+            bert=bert,
+            hidden_size=args.encoder_hidden_size,
+            decoder_hidden_size=args.rnn_dim,
+            dropout_ratio=args.dropout,
+            bidirectional=args.bidir,
         ).to(args.device)
 
-        self.decoder = model_lstm.AttnDecoderLSTM(
+        self.decoder = model.AttnDecoderLSTM(
             self.n_inputs(),
             self.n_outputs(),
             args.aemb,
@@ -153,15 +159,15 @@ class LSTMAgent(BaseAgent):
 
     @staticmethod
     def n_inputs():
-        return len(LSTMAgent.model_actions)
+        return len(Agent.model_actions)
 
     @staticmethod
     def n_outputs():
-        return len(LSTMAgent.model_actions) - 2  # Model doesn't output start or ignore
+        return len(Agent.model_actions) - 2  # Model doesn't output start or ignore
 
     def _sort_batch(self, obs):
-        """ Extract instructions from a list of observations and sort by descending
-            sequence length (to enable PyTorch packing). """
+        """Extract instructions from a list of observations and sort by descending
+        sequence length (to enable PyTorch packing)."""
 
         seq_tensor = np.array([ob["target_dialog_tokens_id"] for ob in obs])
         segment_ids = np.array([ob["target_dialog_segment_ids"] for ob in obs])
@@ -186,7 +192,7 @@ class LSTMAgent(BaseAgent):
             Variable(sorted_segment_ids, requires_grad=False)
             .long()
             .to(self.args.device),
-            mask.byte().cuda(),
+            mask.byte().to(self.args.device),
             list(seq_lengths),
             list(perm_idx),
         )
@@ -194,7 +200,11 @@ class LSTMAgent(BaseAgent):
     def _feature_variable(self, obs):
         """ Extract precomputed features into variable. """
         features = np.empty(
-            (len(obs), self.args.lstm_img_feature_dim,), dtype=np.float32,
+            (
+                len(obs),
+                self.args.lstm_img_feature_dim,
+            ),
+            dtype=np.float32,
         )
         for i, ob in enumerate(obs):
             features[i, :] = ob["feature"]  # Image feat
@@ -264,7 +274,12 @@ class LSTMAgent(BaseAgent):
         seq_lengths = torch.tensor(seq_lengths)
         perm_obs = obs[perm_idx]
 
-        ctx, h_t, c_t = self.encoder(seq, seq_lengths, token_type_ids=segment_ids)
+        ctx, h_t, c_t = self.encoder(
+            inputs=seq,
+            lengths=seq_lengths,
+            mask=seq_mask,
+            token_type_ids=segment_ids,
+        )
         ctx_mask = seq_mask
 
         # Record starting point
@@ -280,7 +295,7 @@ class LSTMAgent(BaseAgent):
         a_t = Variable(
             torch.ones(batch_size).long() * self.model_actions.index("<start>"),
             requires_grad=False,
-        ).cuda()
+        ).to(self.args.device)
 
         ended = np.array(
             [False] * batch_size
@@ -356,7 +371,7 @@ class LSTMAgent(BaseAgent):
                     # avg_loss = self.loss
                     if self.args.n_gpu > 1:
                         pass  # already reduced
-                    elif self.args.local_rank != -1:
+                    elif self.args.local_rank not in [-2, -1]:
                         self.non_avg_loss /= dist.get_world_size()
                         dist.all_reduce(self.non_avg_loss, op=dist.ReduceOp.SUM)
                         self.non_avg_loss /= self.args.detach_loss_at
@@ -392,7 +407,7 @@ class LSTMAgent(BaseAgent):
         else:
             self.encoder.eval()
             self.decoder.eval()
-        super(LSTMAgent, self).test()
+        super(Agent, self).test()
 
     def train(self, n_iters, feedback="teacher"):
         """ Train for a given number of iterations """
@@ -410,7 +425,7 @@ class LSTMAgent(BaseAgent):
             self.rollout()
 
             if not self.args.detach_loss:
-                if self.args.local_rank != -1:
+                if self.args.local_rank not in [-2, -1]:
                     self.loss /= dist.get_world_size()
                     dist.all_reduce(self.loss, op=dist.ReduceOp.SUM)
                 self.loss.backward()

@@ -1,138 +1,93 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
+import logging
 import os
 import sys
-import logging
 import time
+from collections import defaultdict
+
 import numpy as np
 import pandas as pd
 import torch
-from params import args
-from data_loader_lstm import (
-    LSTMVLNDataset,
-    LSTMVLNDataLoader,
-    LSTMVLNDataloader_collate_fn,
-)
-from eval import Evaluation
-from agent_lstm import LSTMAgent
-from utils import set_seed
-from utils_model import load_oscar_model
-from utils_data import load_img_pickle_features, timeSince, read_img_features
-from collections import defaultdict
-
-from tensorboardX import SummaryWriter
-
 import torch.distributed as dist
+from tensorboardX import SummaryWriter
+from torch.utils.data import RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
-from torch.utils.data import (
-    RandomSampler,
-    SequentialSampler,
-)
 
-from transformers.pytorch_transformers import (
-    modeling_bert,
+from agent import Agent
+from data_loader import VLNDataLoader, VLNDataloader_collate_fn, VLNDataset
+from eval import Evaluation
+from get_oscar_model import MODEL_CLASS, load_oscar_model, special_tokens_dict
+from oscar.transformers_src.pytorch_transformers import (
+    AdamW,
     BertConfig,
     BertTokenizer,
-    AdamW,
-    WarmupLinearSchedule,
     WarmupConstantSchedule,
+    WarmupLinearSchedule,
+    modeling_bert,
 )
+from utils import Tokenizer, read_vocab, set_seed, setup_vocab
+from utils_data import load_detector_classes, read_tsv_img_features, timeSince
+
+sys.path.append("/root/mount/Matterport3DSimulator/tasks/")
+from FINAL_TASK.params import args
 
 logger = logging.getLogger(__name__)
 
 
-def train_attn_lstm(args, features):
-    num_labels = LSTMAgent.n_outputs()
+def train(args, features):
     model, tokenizer, config = load_oscar_model(
         args,
-        "ImageBertForSequenceClassificationwithAction",
-        num_labels,
+        "PreTrainOscar",
         add_new_extra_embeds=False,
         finetuned=args.eval_only,
     )
 
-    word_embedding = model.bert.embeddings
+    bert_encoder = model.bert
 
-    if not args.train_only:
-        val_seen_dataset = LSTMVLNDataset(
-            args=args,
-            splits=["val_seen"],
-            tokenizer=tokenizer,
-            truncate_dialog=True,
-            path_type=args.path_type,
-        )
-
-        val_unseen_dataset = LSTMVLNDataset(
-            args=args,
-            splits=["val_unseen"],
-            tokenizer=tokenizer,
-            truncate_dialog=True,
-            path_type=args.path_type,
-        )
-
-        val_datasets = {
-            "val_seen": val_seen_dataset,
-            "val_unseen": val_unseen_dataset,
-        }
-
-    train_dataset = LSTMVLNDataset(
+    train_dataset = VLNDataset(
         args=args,
         splits=["train"],
         tokenizer=tokenizer,
         truncate_dialog=True,
         path_type=args.path_type,
+        add_ndh_data=True,
+        add_r2r_data=args.add_r2r_data,
+        add_r4r_data=args.add_r4r_data,
+        add_rxr_data=args.add_rxr_data,
     )
 
     tensorboard_dir = os.path.join(args.output_dir, "tensorboard")
-    if args.local_rank in [-1, 0]:
+    if args.local_rank in [-2, -1, 0]:
         tb_writer = SummaryWriter(logdir=tensorboard_dir, flush_secs=30)
 
     args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
     train_sampler = (
         RandomSampler(train_dataset)
-        if args.local_rank == -1
+        if args.local_rank in [-2, -1]
         else DistributedSampler(train_dataset)
     )
 
-    train_data_loader = LSTMVLNDataLoader(
+    train_data_loader = VLNDataLoader(
         dataset=train_dataset,
+        splits=["train"],
         feature_store=features,
         tokenizer=tokenizer,
         batch_size=args.train_batch_size,
-        collate_fn=LSTMVLNDataloader_collate_fn,
+        collate_fn=VLNDataloader_collate_fn,
         sampler=train_sampler,
         num_workers=args.num_workers,
         pin_memory=True,
         drop_last=True,
     )
 
-    val_data_loaders = {}
-    if not args.eval_only:
-        assert val_datasets is not None
-        args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
-        for split, val_dataset in val_datasets.items():
-            val_sampler = SequentialSampler(val_dataset)
-            val_data_loader = LSTMVLNDataLoader(
-                dataset=val_dataset,
-                feature_store=features,
-                tokenizer=tokenizer,
-                batch_size=args.eval_batch_size,
-                collate_fn=LSTMVLNDataloader_collate_fn,
-                sampler=val_sampler,
-                num_workers=args.num_workers,
-                pin_memory=True,
-                drop_last=False,
-            )
-            evaluation = Evaluation([split], path_type=args.path_type)
-            val_data_loaders[split] = (val_data_loader, evaluation)
-
-    agent = LSTMAgent(
+    agent = Agent(
         args=args,
         tokenizer=tokenizer,
         dataloader=train_data_loader,
         results_path="",
-        word_embedding=word_embedding,
+        bert=bert_encoder,
         episode_len=args.max_episode_len,
     )
 
@@ -140,7 +95,7 @@ def train_attn_lstm(args, features):
         agent.encoder = torch.nn.DataParallel(agent.encoder)
         agent.decoder = torch.nn.DataParallel(agent.decoder)
 
-    if args.local_rank != -1:
+    if args.local_rank not in [-2, -1]:
         agent.encoder = torch.nn.parallel.DistributedDataParallel(
             agent.encoder,
             device_ids=[args.local_rank],
@@ -165,7 +120,7 @@ def train_attn_lstm(args, features):
     for idx in range(0, n_iters, log_every):
         interval = min(log_every, n_iters - idx)
         iter_no = idx + interval
-        if args.local_rank in [-1, 0]:
+        if args.local_rank in [-2, -1, 0]:
             data_log["iteration"].append(iter_no)
 
         agent.train(interval, feedback=args.feedback_method)
@@ -176,59 +131,14 @@ def train_attn_lstm(args, features):
 
         loss_str = ""
 
-        if args.local_rank in [-1, 0]:
+        if args.local_rank in [-2, -1, 0]:
             data_log["train loss"].append(train_loss_avg)
             loss_str += "train loss: %.4f" % train_loss_avg
             # logger.info(f"Avg Loss: {train_loss_avg}")
             tb_writer.add_scalar("loss/train", train_loss_avg, global_step=iter_no)
 
         if (
-            args.local_rank in [-1, 0]
-            and args.evaluate_during_training
-            and idx % args.eval_logging_steps == 0
-        ):
-            for env_name, (dataloader, evaluator) in val_data_loaders.items():
-                agent.dataloader = dataloader
-                agent.data_iter = iter(agent.dataloader)
-
-                agent.results_path = os.path.join(
-                    args.output_dir, "predictions", f"{env_name}-{iter_no}.json"
-                )
-                agent.test(
-                    use_dropout=True, feedback=args.feedback_method, allow_cheat=True
-                )
-                val_losses = np.array(agent.losses)
-                val_loss_avg = np.average(val_losses)
-                tb_writer.add_scalar(
-                    f"loss/{env_name}", val_loss_avg, global_step=iter_no
-                )
-                data_log["%s loss" % env_name].append(val_loss_avg)
-
-                agent.test(use_dropout=False, feedback="argmax")
-                agent.write_results()
-                score_summary, _ = evaluator.score(agent.results_path)
-                loss_str += ", %s loss: %.4f" % (env_name, val_loss_avg)
-                for metric, val in score_summary.items():
-                    data_log["%s %s" % (env_name, metric)].append(val)
-                    if metric in [
-                        "length",
-                        "nav_error",
-                        "success_rate",
-                        "oracle_success_rate",
-                        "oracle_path_success_rate",
-                        "spl",
-                        "dist_to_end_reduction",
-                    ]:
-                        loss_str += ", %s: %.3f" % (metric, val)
-                        tb_writer.add_scalar(
-                            f"{metric}/{env_name}", val, global_step=iter_no
-                        )
-
-            agent.dataloader = train_data_loader
-            agent.data_iter = iter(agent.dataloader)
-
-        if (
-            args.local_rank in [-1, 0]
+            args.local_rank in [-2, -1, 0]
             and args.save_steps > 0
             and idx % args.save_steps == 0
         ):
@@ -248,6 +158,7 @@ def train_attn_lstm(args, features):
                 os.path.join(output_dir, "encoder"), os.path.join(output_dir, "decoder")
             )
             torch.save(args, os.path.join(output_dir, "training_args.bin"))
+            # if not args.no_pretrained_model:
             tokenizer.save_pretrained(output_dir)
             logger.info(f"Saving model checkpoint {iter_no} to {output_dir}")
 
@@ -262,13 +173,11 @@ def train_attn_lstm(args, features):
         )
 
 
-def val_attn_lstm(args, features, list_iter_no):
+def val(args, features, list_iter_no):
 
     tensorboard_dir = os.path.join(args.output_dir, "tensorboard")
-    if args.local_rank in [-1, 0]:
+    if args.local_rank in [-2, -1, 0]:
         tb_writer = SummaryWriter(logdir=tensorboard_dir, flush_secs=30)
-
-    num_labels = LSTMAgent.n_outputs()
 
     root_folder = args.model_name_or_path
 
@@ -276,22 +185,52 @@ def val_attn_lstm(args, features, list_iter_no):
 
         encoder_path = os.path.join(root_folder, f"checkpoint-{iter_no}", "encoder")
         decoder_path = os.path.join(root_folder, f"checkpoint-{iter_no}", "decoder")
+
         tokenizer_path = os.path.join(root_folder, f"checkpoint-{iter_no}/")
 
-        tmp_root_folder = (
-            "oscar_ndh_results/viewpoint_selection_v1/checkpoints/checkpoint-22510"
-        )
+        tmp_root_folder = "srv/oscar_pretrained_models/base-vg-labels/ep_107_1192087"
         config_path = os.path.join(tmp_root_folder, "config.json")
 
-        config = BertConfig.from_pretrained(
-            config_path, num_labels=num_labels, finetuning_task="NDH",
+        config = BertConfig.from_pretrained(config_path)
+
+        # config.action_space = 36
+
+        config.img_feature_dim = args.img_feature_dim
+        config.hidden_dropout_prob = args.drop_out
+        config.classifier = "linear"
+        config.loss_type = "CrossEntropy"
+        config.cls_hidden_scale = 2
+
+        config.action_space = args.action_space
+
+        config.detector_classes = len(load_detector_classes())
+
+        add_new_extra_embeds = not args.oscar_setting
+
+        if add_new_extra_embeds:
+            config.vocab_size = config.vocab_size + 3
+            config.special_vocab_size = config.vocab_size
+            config.type_vocab_size = config.type_vocab_size + 4
+            config.max_position_embeddings = args.max_seq_length
+
+        else:
+            config.special_vocab_size = config.vocab_size
+
+        model_class = MODEL_CLASS["PreTrainOscar"][1]
+        model = model_class(config)
+        bert_encoder = model.bert
+
+        tokenizer = BertTokenizer.from_pretrained(
+            tokenizer_path,
+            do_lower_case=True,
         )
+        if add_new_extra_embeds:
+            num_added_toks = tokenizer.add_special_tokens(special_tokens_dict)
+            logger.info(
+                f"Added {num_added_toks} tokens {' '.join(special_tokens_dict.values())} to Tokenizer"
+            )
 
-        word_embedding = modeling_bert.BertEmbeddings(config)
-
-        tokenizer = BertTokenizer.from_pretrained(tokenizer_path, do_lower_case=True,)
-
-        val_seen_dataset = LSTMVLNDataset(
+        val_seen_dataset = VLNDataset(
             args=args,
             splits=["val_seen"],
             tokenizer=tokenizer,
@@ -299,7 +238,7 @@ def val_attn_lstm(args, features, list_iter_no):
             path_type=args.path_type,
         )
 
-        val_unseen_dataset = LSTMVLNDataset(
+        val_unseen_dataset = VLNDataset(
             args=args,
             splits=["val_unseen"],
             tokenizer=tokenizer,
@@ -316,12 +255,13 @@ def val_attn_lstm(args, features, list_iter_no):
         args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
         for split, val_dataset in val_datasets.items():
             val_sampler = SequentialSampler(val_dataset)
-            val_data_loader = LSTMVLNDataLoader(
+            val_data_loader = VLNDataLoader(
                 dataset=val_dataset,
+                splits=[split],
                 feature_store=features,
                 tokenizer=tokenizer,
                 batch_size=args.eval_batch_size,
-                collate_fn=LSTMVLNDataloader_collate_fn,
+                collate_fn=VLNDataloader_collate_fn,
                 sampler=val_sampler,
                 num_workers=args.num_workers,
                 pin_memory=True,
@@ -330,12 +270,12 @@ def val_attn_lstm(args, features, list_iter_no):
             evaluation = Evaluation([split], path_type=args.path_type)
             val_data_loaders[split] = (val_data_loader, evaluation)
 
-        agent = LSTMAgent(
+        agent = Agent(
             args=args,
             tokenizer=tokenizer,
             dataloader=val_data_loader,
             results_path="",
-            word_embedding=word_embedding,
+            bert=bert_encoder,
             episode_len=args.max_episode_len,
         )
 
@@ -345,7 +285,7 @@ def val_attn_lstm(args, features, list_iter_no):
             agent.encoder = torch.nn.DataParallel(agent.encoder)
             agent.decoder = torch.nn.DataParallel(agent.decoder)
 
-        if args.local_rank != -1:
+        if args.local_rank not in [-2, -1]:
             agent.encoder = torch.nn.parallel.DistributedDataParallel(
                 agent.encoder,
                 device_ids=[args.local_rank],
@@ -376,6 +316,7 @@ def val_attn_lstm(args, features, list_iter_no):
             agent.results_path = os.path.join(
                 args.output_dir, "predictions", f"{env_name}-{iter_no}.json"
             )
+
             agent.test(
                 use_dropout=True, feedback=args.feedback_method, allow_cheat=True
             )
@@ -386,18 +327,22 @@ def val_attn_lstm(args, features, list_iter_no):
 
             agent.test(use_dropout=False, feedback="argmax")
             agent.write_results()
+
             score_summary, _ = evaluator.score(agent.results_path)
             loss_str = ", %s loss: %.4f" % (env_name, val_loss_avg)
             for metric, val in score_summary.items():
                 data_log["%s %s" % (env_name, metric)].append(val)
                 if metric in [
                     "length",
+                    "hops",
                     "nav_error",
                     "success_rate",
                     "oracle_success_rate",
                     "oracle_path_success_rate",
                     "spl",
                     "dist_to_end_reduction",
+                    "ndtw",
+                    "cls",
                 ]:
                     loss_str += ", %s: %.3f" % (metric, val)
                     tb_writer.add_scalar(
@@ -407,7 +352,11 @@ def val_attn_lstm(args, features, list_iter_no):
             end = time.time()
             logger.info(
                 "Time: %0.2f min Eval Iter: %d %s"
-                % ((end - start) / 60, iter_no, loss_str,)
+                % (
+                    (end - start) / 60,
+                    iter_no,
+                    loss_str,
+                )
             )
 
         df = pd.DataFrame(data_log)
@@ -424,6 +373,7 @@ def main():
         and os.path.exists(args.output_dir)
         and os.listdir(args.output_dir)
         and not args.eval_only
+        and not args.test_only
     ):
         raise IOError(
             "%s \nOutput Directory not empty and train setting is on. Exiting to prevent overwriting..."
@@ -449,10 +399,15 @@ def main():
         handlers=handlers,
     )
 
-    # Setup CUDA, GPU & distributed training
+    # Setup CPU, CUDA, GPU & distributed training
     if args.local_rank == -1:
-        device = torch.device("cuda")
-        args.n_gpu = torch.cuda.device_count()
+        device = torch.device("cpu")
+        args.local_rank = -2
+        args.n_gpu = -1
+        if torch.cuda.is_available():
+            device = torch.device("cuda")
+            args.local_rank = -1
+            args.n_gpu = torch.cuda.device_count()
     else:  # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
         torch.cuda.set_device(args.local_rank)
         device = torch.device("cuda", args.local_rank)
@@ -479,19 +434,21 @@ def main():
 
     logger.info("Training/evaluation parameters %s", args)
 
-    if args.agent == "att-lstm":
-        features = read_img_features(
-            os.path.join(args.img_feat_dir, args.img_feature_file)
-        )
-        if args.eval_only:
-            assert (
-                len(args.eval_iters) != 0 and args.eval_iters != -1
-            ), "incorrect eval_iters provided!"
-            val_attn_lstm(args, features, args.eval_iters)
-        else:
-            train_attn_lstm(args, features)
+    features = read_tsv_img_features(
+        path=os.path.join(args.img_feat_dir, args.img_feature_file),
+        feature_size=args.lstm_img_feature_dim,
+    )
+
+    if args.test_only:
+        assert False, "Test submission not implemented for Action-based navigator"
+    if args.eval_only:
+        assert (
+            len(args.eval_iters) != 0 and args.eval_iters != -1
+        ), "incorrect eval_iters provided!"
+        val(args, features, args.eval_iters)
     else:
-        raise NotImplementedError
+        train(args, features)
+
     sys.exit()
 
 

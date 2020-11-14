@@ -3,14 +3,14 @@
 
 import torch
 import torch.nn as nn
-from torch.autograd import Variable
 import torch.nn.functional as F
+from torch.autograd import Variable
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 
 class EncoderLSTM(nn.Module):
-    """ Encodes navigation instructions, returning hidden state context (for
-        attention methods) and a decoder initial state. """
+    """Encodes navigation instructions, returning hidden state context (for
+    attention methods) and a decoder initial state."""
 
     def __init__(
         self,
@@ -64,10 +64,14 @@ class EncoderLSTM(nn.Module):
         return h0.to(self.args.device), c0.to(self.args.device)
 
     def forward(
-        self, inputs, lengths, position_ids=None, token_type_ids=None,
+        self,
+        inputs,
+        lengths,
+        position_ids=None,
+        token_type_ids=None,
     ):
-        """ Expects input vocab indices as (batch, seq_len). Also requires a
-            list of lengths for dynamic batching. """
+        """Expects input vocab indices as (batch, seq_len). Also requires a
+        list of lengths for dynamic batching."""
 
         embeds = self.embedding(
             inputs, position_ids=position_ids, token_type_ids=token_type_ids
@@ -110,15 +114,136 @@ class EncoderLSTM(nn.Module):
             # (batch, hidden_size)
 
 
+class OscarEncoder(nn.Module):
+    """Encodes navigation instructions, returning hidden state context (for
+    attention methods) and a decoder initial state."""
+
+    def __init__(
+        self,
+        args,
+        bert,
+        hidden_size,
+        decoder_hidden_size,
+        dropout_ratio,
+        bidirectional=False,
+        num_layers=1,
+        reverse_input=False,
+    ):
+        super(OscarEncoder, self).__init__()
+
+        self.transformer_hidden_size = 768
+        self.reverse_input = reverse_input
+        self.dec_hidden_size = decoder_hidden_size
+
+        self.args = args
+
+        self.bert = bert
+        self.hidden_size = hidden_size
+        self.drop = nn.Dropout(p=dropout_ratio)
+        if bidirectional:
+            print("Using Bidir in EncoderLSTM")
+        self.num_directions = 2 if bidirectional else 1
+        self.num_layers = num_layers
+
+        self.lstm = nn.LSTM(
+            self.transformer_hidden_size,
+            self.hidden_size,
+            self.num_layers,
+            batch_first=True,
+            dropout=dropout_ratio,
+            bidirectional=bidirectional,
+        )
+        self.encoder_lstm2decoder_ht = nn.Linear(
+            hidden_size * self.num_directions, decoder_hidden_size
+        )
+        self.encoder_lstm2decoder_ct = nn.Linear(
+            hidden_size * self.num_directions, decoder_hidden_size
+        )
+
+    def init_state(self, inputs):
+        """ Initialize to zero cell states and hidden states."""
+        batch_size = inputs.size(0)
+        h0 = Variable(
+            torch.zeros(
+                self.num_layers * self.num_directions, batch_size, self.hidden_size
+            ),
+            requires_grad=False,
+        )
+        c0 = Variable(
+            torch.zeros(
+                self.num_layers * self.num_directions, batch_size, self.hidden_size
+            ),
+            requires_grad=False,
+        )
+
+        return h0.to(self.args.device), c0.to(self.args.device)
+
+    def forward(
+        self,
+        inputs,
+        lengths,
+        mask,
+        position_ids=None,
+        token_type_ids=None,
+    ):
+        """Expects input vocab indices as (batch, seq_len). Also requires a
+        list of lengths for dynamic batching."""
+
+        seq_max_len = mask.size(1)
+        att_mask = ~mask
+
+        outputs = self.bert(
+            inputs,
+            token_type_ids=token_type_ids,
+            attention_mask=att_mask,
+            position_ids=position_ids,
+        )
+
+        output = outputs[0]
+
+        if self.reverse_input:
+            reversed_output = torch.zeros(output.size()).to(output.device)
+            reverse_idx = torch.arange(seq_max_len - 1, -1, -1)
+            reversed_output[att_mask] = output[:, reverse_idx][att_mask[:, reverse_idx]]
+            output = reversed_output
+
+        h0, c0 = self.init_state(inputs)
+        packed_embeds = pack_padded_sequence(output, lengths, batch_first=True)
+        enc_h, (enc_h_t, enc_c_t) = self.lstm(packed_embeds, (h0, c0))
+
+        if (
+            self.num_directions == 2
+        ):  # The size of enc_h_t is (num_layers * num_directions, batch, hidden_size)
+            h_t = torch.cat((enc_h_t[-1], enc_h_t[-2]), 1)
+            c_t = torch.cat((enc_c_t[-1], enc_c_t[-2]), 1)
+        else:
+            h_t = enc_h_t[-1]
+            c_t = enc_c_t[-1]  # (batch, hidden_size)
+
+        decoder_init = nn.Tanh()(self.encoder_lstm2decoder_ht(h_t))
+        if self.hidden_size * self.num_directions != self.dec_hidden_size:
+            c_t = self.encoder_lstm2decoder_ct(c_t)
+
+        ctx, lengths = pad_packed_sequence(enc_h, batch_first=True)
+
+        ctx = self.drop(ctx)
+
+        return (
+            ctx,
+            decoder_init,
+            c_t,
+        )  # (batch, seq_len, hidden_size*num_directions)
+
+
 class SoftDotAttention(nn.Module):
-    '''Soft Dot Attention.
+    """Soft Dot Attention.
 
     Ref: http://www.aclweb.org/anthology/D15-1166
     Adapted from PyTorch OPEN NMT.
-    '''
+    """
 
     def __init__(self, dim):
-        '''Initialize layer.'''
+        """Initialize layer."""
         super(SoftDotAttention, self).__init__()
         self.linear_in = nn.Linear(dim, dim, bias=False)
         self.sm = nn.Softmax(dim=1)
@@ -126,19 +251,19 @@ class SoftDotAttention(nn.Module):
         self.tanh = nn.Tanh()
 
     def forward(self, h, context, mask=None):
-        '''Propagate h through the network.
+        """Propagate h through the network.
 
         h: batch x dim
         context: batch x seq_len x dim
         mask: batch x seq_len indices to be masked
-        '''
+        """
         target = self.linear_in(h).unsqueeze(2)  # batch x dim x 1
 
         # Get attention
         attn = torch.bmm(context, target).squeeze(2)  # batch x seq_len
         if mask is not None:
             # -Inf masking prior to the softmax
-            attn.data.masked_fill_(mask.bool(), -float('inf'))
+            attn.data.masked_fill_(mask.bool(), -float("inf"))
         attn = self.sm(attn)
         attn3 = attn.view(attn.size(0), 1, attn.size(1))  # batch x 1 x seq_len
 
@@ -150,10 +275,17 @@ class SoftDotAttention(nn.Module):
 
 
 class AttnDecoderLSTM(nn.Module):
-    ''' An unrolled LSTM with attention over instructions for decoding navigation actions. '''
+    """ An unrolled LSTM with attention over instructions for decoding navigation actions. """
 
-    def __init__(self, input_action_size, output_action_size, embedding_size, hidden_size,
-                      dropout_ratio, feature_size=2048):
+    def __init__(
+        self,
+        input_action_size,
+        output_action_size,
+        embedding_size,
+        hidden_size,
+        dropout_ratio,
+        feature_size=2048,
+    ):
         super(AttnDecoderLSTM, self).__init__()
         self.embedding_size = embedding_size
         self.feature_size = feature_size
@@ -165,7 +297,7 @@ class AttnDecoderLSTM(nn.Module):
         self.decoder2action = nn.Linear(hidden_size, output_action_size)
 
     def forward(self, action, feature, h_0, c_0, ctx, ctx_mask=None):
-        ''' Takes a single step in the decoder LSTM (allowing sampling).
+        """Takes a single step in the decoder LSTM (allowing sampling).
 
         action: batch x 1
         feature: batch x feature_size
@@ -173,10 +305,12 @@ class AttnDecoderLSTM(nn.Module):
         c_0: batch x hidden_size
         ctx: batch x seq_len x dim
         ctx_mask: batch x seq_len - indices to be masked
-        '''
-        action_embeds = self.embedding(action)   # (batch, 1, embedding_size)
+        """
+        action_embeds = self.embedding(action)  # (batch, 1, embedding_size)
         action_embeds = action_embeds.squeeze()
-        concat_input = torch.cat((action_embeds, feature), 1)  # (batch, embedding_size+feature_size)
+        concat_input = torch.cat(
+            (action_embeds, feature), 1
+        )  # (batch, embedding_size+feature_size)
         drop = self.drop(concat_input)
         h_1, c_1 = self.lstm(drop, (h_0, c_0))
         h_1_drop = self.drop(h_1)

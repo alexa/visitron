@@ -5,63 +5,39 @@
 
 import json
 import os
-import pprint
 import sys
 from collections import defaultdict
-
 import networkx as nx
 import numpy as np
+import pprint
 
 pp = pprint.PrettyPrinter(indent=4)
 
-from data_loader import VLNDataLoader, VLNDataloader_collate_fn, VLNDataset
 from utils_data import load_datasets, load_nav_graphs
 
 
 class Evaluation(object):
     """ Results submission format:  [{'instr_id': string, 'trajectory':[(viewpoint_id, heading_rads, elevation_rads),] } ] """
 
-    def __init__(self, splits, path_type="planner_path", dataset_type="NDH"):
+    def __init__(self, splits, path_type="planner_path"):
         self.error_margin = 3.0
         self.splits = splits
         self.gt = {}
         self.instr_ids = []
         self.scans = []
+        for item in load_datasets(splits):
+            self.gt[item["inst_idx"]] = item
+            self.instr_ids.append(item["inst_idx"])
+            self.scans.append(item["scan"])
 
-        if dataset_type == "NDH":
-            for item in load_datasets(splits, dataset_type="NDH"):
-                self.gt[item["inst_idx"]] = item
-                self.instr_ids.append(item["inst_idx"])
-                self.scans.append(item["scan"])
+            # Add 'trusted_path' to gt metadata if necessary.
+            if path_type == "trusted_path":
+                planner_goal = item["planner_path"][-1]
+                if planner_goal in item["player_path"][1:]:
+                    self.gt[item["inst_idx"]]["trusted_path"] = item["player_path"][:]
+                else:
+                    self.gt[item["inst_idx"]]["trusted_path"] = item["planner_path"][:]
 
-                # Add 'trusted_path' to gt metadata if necessary.
-                if path_type == "trusted_path":
-                    planner_goal = item["planner_path"][-1]
-                    if planner_goal in item["player_path"][1:]:
-                        self.gt[item["inst_idx"]]["trusted_path"] = item["player_path"][
-                            :
-                        ]
-                    else:
-                        self.gt[item["inst_idx"]]["trusted_path"] = item[
-                            "planner_path"
-                        ][:]
-        elif dataset_type == "R2R":
-            for item in load_datasets(splits, dataset_type="R2R"):
-                self.gt[item["inst_idx"]] = item
-                self.instr_ids.append(item["inst_idx"])
-                self.scans.append(item["scan"])
-
-                self.gt[item["inst_idx"]][""] = item["path"]
-
-                # Add 'trusted_path' to gt metadata if necessary.
-                if path_type == "trusted_path":
-                    planner_goal = item["planner_path"][-1]
-                    if planner_goal in item["player_path"][1:]:
-                        self.gt[item["inst_idx"]]["trusted_path"] = item["player_path"][
-                            :
-                        ]
-                    else:
-                        self.gt[item["inst_idx"]]["trusted_path"] = item["path"]
         self.scans = set(self.scans)
         self.instr_ids = set(self.instr_ids)
         self.graphs = load_nav_graphs(self.scans)
@@ -80,47 +56,9 @@ class Evaluation(object):
                 near_d = d
         return near_id
 
-    def length(self, scan, nodes):
-        return float(
-            np.sum(
-                [
-                    self.distances[scan][edge[0]][edge[1]]
-                    for edge in zip(nodes[:-1], nodes[1:])
-                ]
-            )
-        )
-
-    def ndtw(self, scan, prediction, reference):
-        dtw_matrix = np.inf * np.ones((len(prediction) + 1, len(reference) + 1))
-        dtw_matrix[0][0] = 0
-        for i in range(1, len(prediction) + 1):
-            for j in range(1, len(reference) + 1):
-                best_previous_cost = min(
-                    dtw_matrix[i - 1][j], dtw_matrix[i][j - 1], dtw_matrix[i - 1][j - 1]
-                )
-                cost = self.distances[scan][prediction[i - 1]][reference[j - 1]]
-                dtw_matrix[i][j] = cost + best_previous_cost
-        dtw = dtw_matrix[len(prediction)][len(reference)]
-        ndtw = np.exp(-dtw / (self.error_margin * len(reference)))
-        return ndtw
-
-    def cls_metric(self, scan, prediction, reference):
-        coverage = np.mean(
-            [
-                np.exp(
-                    -np.min([self.distances[scan][u][v] for v in prediction])
-                    / self.error_margin
-                )
-                for u in reference
-            ]
-        )
-        expected = coverage * self.length(scan, reference)
-        score = expected / (expected + np.abs(expected - self.length(scan, prediction)))
-        return coverage * score
-
     def _score_item(self, instr_id, path):
-        """Calculate error based on the final position in trajectory, and also
-        the closest position (oracle stopping rule)."""
+        """ Calculate error based on the final position in trajectory, and also
+            the closest position (oracle stopping rule). """
         gt = self.gt[int(instr_id)]
         start = gt[self.path_type][0]
         assert (
@@ -155,7 +93,6 @@ class Evaluation(object):
             dist_to_end_start - dist_to_end_end
         )
         distance = 0  # Work out the length of the path in meters
-        hops = 0
         prev = path[0]
         for curr in path[1:]:
             if prev[0] != curr[0]:
@@ -170,19 +107,11 @@ class Evaluation(object):
                     )
                     raise
             distance += self.distances[gt["scan"]][prev[0]][curr[0]]
-            hops += 1
             prev = curr
         self.scores["trajectory_lengths"].append(distance)
-        self.scores["trajectory_hops"].append(hops)
         self.scores["shortest_path_lengths"].append(
             self.distances[gt["scan"]][start][goal]
         )
-
-        gt_vIds = gt[self.path_type]
-        path_vIds = [i[0] for i in path]
-
-        self.scores["ndtw"].append(self.ndtw(gt["scan"], path_vIds, gt_vIds))
-        self.scores["cls"].append(self.cls_metric(gt["scan"], path_vIds, gt_vIds))
 
     def score(self, output_file):
         """ Evaluate each agent trajectory based on how close it got to the goal location """
@@ -194,11 +123,9 @@ class Evaluation(object):
                 if item["inst_idx"] in instr_ids:
                     instr_ids.remove(item["inst_idx"])
                     self._score_item(item["inst_idx"], item["trajectory"])
-        assert (
-            len(instr_ids) == 0
-        ), "Trajectories not provided for %d instruction ids: %s" % (
-            len(instr_ids),
-            instr_ids,
+        assert len(instr_ids) == 0, (
+            "Trajectories not provided for %d instruction ids: %s"
+            % (len(instr_ids), instr_ids)
         )
         assert len(self.scores["nav_errors"]) == len(self.instr_ids)
 
@@ -228,7 +155,6 @@ class Evaluation(object):
 
         score_summary = {
             "length": np.average(self.scores["trajectory_lengths"]),
-            "hops": np.average(self.scores["trajectory_hops"]),
             "nav_error": np.average(self.scores["nav_errors"]),
             "oracle_success_rate": float(oracle_successes)
             / float(len(self.scores["oracle_errors"])),
@@ -239,8 +165,6 @@ class Evaluation(object):
             / float(len(self.scores["oracle_plan_errors"])),
             "dist_to_end_reduction": sum(self.scores["dist_to_end_reductions"])
             / float(len(self.scores["dist_to_end_reductions"])),
-            "ndtw": np.average(self.scores["ndtw"]),
-            "cls": np.average(self.scores["cls"]),
         }
 
         assert score_summary["spl"] <= score_summary["success_rate"]
