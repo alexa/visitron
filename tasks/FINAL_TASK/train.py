@@ -29,7 +29,7 @@ from oscar.transformers_src.pytorch_transformers import (
 )
 from params import args
 from utils import Tokenizer, read_vocab, set_seed, setup_vocab
-from utils_data import read_tsv_img_features, timeSince
+from utils_data import load_detector_classes, read_tsv_img_features, timeSince
 
 # from utils_model import MODEL_CLASS, load_oscar_model
 
@@ -207,6 +207,8 @@ def val(args, features, list_iter_no):
         config.cls_hidden_scale = 2
 
         config.action_space = args.action_space
+
+        config.detector_classes = len(load_detector_classes())
 
         add_new_extra_embeds = not args.oscar_setting
 

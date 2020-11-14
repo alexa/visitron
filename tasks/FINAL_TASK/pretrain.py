@@ -151,7 +151,15 @@ def train(args, features_reader):
 
             batch = {key: item.to(args.device) for key, item in batch.items()}
 
-            loss, mask_loss, next_loss, words_accuracy, action_accuracy = model(**batch)
+            (
+                loss,
+                mask_loss,
+                next_loss,
+                token_loss,
+                words_accuracy,
+                action_accuracy,
+                token_accuracy,
+            ) = model(**batch)
 
             if args.local_rank not in [-2, -1]:
                 loss /= dist.get_world_size()
@@ -163,11 +171,17 @@ def train(args, features_reader):
                 next_loss /= dist.get_world_size()
                 dist.all_reduce(next_loss, op=dist.ReduceOp.SUM)
 
+                token_loss /= dist.get_world_size()
+                dist.all_reduce(token_loss, op=dist.ReduceOp.SUM)
+
                 words_accuracy /= dist.get_world_size()
                 dist.all_reduce(words_accuracy, op=dist.ReduceOp.SUM)
 
                 action_accuracy /= dist.get_world_size()
                 dist.all_reduce(action_accuracy, op=dist.ReduceOp.SUM)
+
+                token_accuracy /= dist.get_world_size()
+                dist.all_reduce(token_accuracy, op=dist.ReduceOp.SUM)
 
             loss.backward()
             optimizer.step()
@@ -176,8 +190,10 @@ def train(args, features_reader):
             loss = loss.cpu().detach().item()
             mask_loss = mask_loss.cpu().detach().item()
             next_loss = next_loss.cpu().detach().item()
+            token_loss = token_loss.cpu().detach().item()
             words_accuracy = words_accuracy.cpu().detach().item()
             action_accuracy = action_accuracy.cpu().detach().item()
+            token_accuracy = token_accuracy.cpu().detach().item()
 
             if args.local_rank in [-2, -1, 0] and (
                 global_iter % args.logging_steps == 0 or step == iters_per_epoch - 1
@@ -187,9 +203,11 @@ def train(args, features_reader):
                 data_log["global_iter"].append(global_iter)
                 data_log["train_loss"].append(loss)
                 data_log["mask_loss"].append(mask_loss)
+                data_log["token_loss"].append(token_loss)
                 data_log["next_action_loss"].append(next_loss)
                 data_log["words_accuracy"].append(words_accuracy)
                 data_log["action_accuracy"].append(action_accuracy)
+                data_log["token_accuracy"].append(token_accuracy)
 
                 tb_writer.add_scalar("loss/train_all", loss, global_step=global_iter)
                 tb_writer.add_scalar(
@@ -199,6 +217,9 @@ def train(args, features_reader):
                     "loss/train_next_action", next_loss, global_step=global_iter
                 )
                 tb_writer.add_scalar(
+                    "loss/train_token", token_loss, global_step=global_iter
+                )
+                tb_writer.add_scalar(
                     "accuracy/train_word", words_accuracy, global_step=global_iter
                 )
                 tb_writer.add_scalar(
@@ -206,9 +227,14 @@ def train(args, features_reader):
                     action_accuracy,
                     global_step=global_iter,
                 )
+                tb_writer.add_scalar(
+                    "accuracy/train_token",
+                    token_accuracy,
+                    global_step=global_iter,
+                )
                 log_str = (
                     f"Global Iter: {global_iter} Epoch: {epoch_no}/{args.num_epochs} Iter: {step}/{iters_per_epoch}"
-                    + f"\t Train Loss: {loss:.04} Mask Loss: {mask_loss:.04} Next Action Loss: {next_loss:.04} Word Acc: {words_accuracy:.02} Action Acc: {action_accuracy:.02}"
+                    + f"\t Train Loss: {loss:.04} Mask Loss: {mask_loss:.04} Next Action Loss: {next_loss:.04} Token Prediction Loss: {token_loss:.04} Word Acc: {words_accuracy:.02} Action Acc: {action_accuracy:.02} Token Acc: {token_accuracy:.02}"
                     + f"\t {timeSince(start, float(global_iter+1) / total_iters)}"
                 )
                 logger.info(log_str)
@@ -428,8 +454,10 @@ def val(args, features_reader, list_iter_no):
             total_loss = 0
             total_mask_loss = 0
             total_next_loss = 0
+            total_token_loss = 0
             total_words_accuracy = 0
             total_action_accuracy = 0
+            total_token_accuracy = 0
 
             total_count = 0
 
@@ -437,9 +465,15 @@ def val(args, features_reader, list_iter_no):
                 enumerate(dataloader), desc=f"Evaluating {env_name}"
             ):
                 batch = {key: item.to(args.device) for key, item in batch.items()}
-                loss, mask_loss, next_loss, words_accuracy, action_accuracy = model(
-                    **batch
-                )
+                (
+                    loss,
+                    mask_loss,
+                    next_loss,
+                    token_loss,
+                    words_accuracy,
+                    action_accuracy,
+                    token_accuracy,
+                ) = model(**batch)
 
                 if args.local_rank not in [-2, -1]:
                     loss /= dist.get_world_size()
@@ -451,38 +485,52 @@ def val(args, features_reader, list_iter_no):
                     next_loss /= dist.get_world_size()
                     dist.all_reduce(next_loss, op=dist.ReduceOp.SUM)
 
+                    token_loss /= dist.get_world_size()
+                    dist.all_reduce(token_loss, op=dist.ReduceOp.SUM)
+
                     words_accuracy /= dist.get_world_size()
                     dist.all_reduce(words_accuracy, op=dist.ReduceOp.SUM)
 
                     action_accuracy /= dist.get_world_size()
                     dist.all_reduce(action_accuracy, op=dist.ReduceOp.SUM)
 
+                    token_accuracy /= dist.get_world_size()
+                    dist.all_reduce(token_accuracy, op=dist.ReduceOp.SUM)
+
                 loss = loss.cpu().detach().item()
                 mask_loss = mask_loss.cpu().detach().item()
                 next_loss = next_loss.cpu().detach().item()
+                token_loss = token_loss.cpu().detach().item()
                 words_accuracy = words_accuracy.cpu().detach().item()
                 action_accuracy = action_accuracy.cpu().detach().item()
+                token_accuracy = token_accuracy.cpu().detach().item()
 
                 total_loss += loss
                 total_mask_loss += mask_loss
                 total_next_loss += next_loss
+                total_token_loss += token_loss
                 total_words_accuracy += words_accuracy
                 total_action_accuracy += action_accuracy
+                total_token_accuracy += token_accuracy
 
                 total_count += 1
 
             total_loss /= total_count
             total_mask_loss /= total_count
             total_next_loss /= total_count
+            total_token_loss /= total_count
             total_words_accuracy /= total_count
             total_action_accuracy /= total_count
+            total_token_accuracy /= total_count
 
             if args.local_rank in [-2, -1, 0]:
                 data_log[f"{env_name}_loss"].append(total_loss)
                 data_log[f"{env_name}_mask_loss"].append(total_mask_loss)
                 data_log[f"{env_name}_next_action_loss"].append(total_next_loss)
+                data_log[f"{env_name}_token_loss"].append(total_token_loss)
                 data_log[f"{env_name}_words_accuracy"].append(total_words_accuracy)
                 data_log[f"{env_name}_action_accuracy"].append(total_action_accuracy)
+                data_log[f"{env_name}_token_accuracy"].append(total_token_accuracy)
 
                 tb_writer.add_scalar(
                     f"loss/{env_name}_all", total_loss, global_step=iter_no
@@ -494,6 +542,9 @@ def val(args, features_reader, list_iter_no):
                     f"loss/{env_name}_next_action", total_next_loss, global_step=iter_no
                 )
                 tb_writer.add_scalar(
+                    f"loss/{env_name}_token", total_token_loss, global_step=iter_no
+                )
+                tb_writer.add_scalar(
                     f"accuracy/{env_name}_word",
                     total_words_accuracy,
                     global_step=iter_no,
@@ -503,10 +554,15 @@ def val(args, features_reader, list_iter_no):
                     total_action_accuracy,
                     global_step=iter_no,
                 )
+                tb_writer.add_scalar(
+                    f"accuracy/{env_name}_token",
+                    total_token_accuracy,
+                    global_step=iter_no,
+                )
                 end = time.time()
                 log_str = (
                     f"Global Iter: {iter_no}"
-                    + f"\t {env_name} Loss: {total_loss:.04} Mask Loss: {total_mask_loss:.04} Next Action Loss: {total_next_loss:.04} Word Acc: {total_words_accuracy:.02} Action Acc: {total_action_accuracy:.02}"
+                    + f"\t {env_name} Loss: {total_loss:.04} Mask Loss: {total_mask_loss:.04} Next Action Loss: {total_next_loss:.04} Token Prediction Loss: {token_loss:.04} Word Acc: {total_words_accuracy:.02} Action Acc: {total_action_accuracy:.02} Token Acc: {token_accuracy:.02}"
                     + f"\t Time: {(end-start)/60} mins"
                 )
                 logger.info(log_str)

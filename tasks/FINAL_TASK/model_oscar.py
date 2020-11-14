@@ -332,6 +332,10 @@ class PreTrainOscar(BertPreTrainedModel):
 
         self.criterion = nn.CrossEntropyLoss(ignore_index=-1)
         self.mlmhead = BertOnlyMLMHead(self.config)
+        self.token_head = nn.Sequential(
+            nn.Linear(self.config.hidden_size, self.config.detector_classes),
+            nn.Softmax(dim=-1),
+        )
 
         self.apply(self.init_weights)
 
@@ -358,6 +362,7 @@ class PreTrainOscar(BertPreTrainedModel):
         token_type_ids=None,
         attention_mask=None,
         labels=None,
+        token_labels=None,
         position_ids=None,
         head_mask=None,
         img_feats=None,
@@ -384,9 +389,15 @@ class PreTrainOscar(BertPreTrainedModel):
         lang_part = outputs[0]
 
         prediction_scores = self.mlmhead(lang_part)
-        # import pdb
 
-        # pdb.set_trace()
+        token_loss = 0
+        if token_labels is not None:
+            token_prediction = self.token_head(lang_part)
+            token_loss = self.criterion(
+                token_prediction.view(-1, self.config.detector_classes),
+                token_labels.view(-1),
+            )
+
         mask_loss = self.criterion(
             prediction_scores.view(-1, self.config.vocab_size), labels.view(-1)
         )
@@ -396,10 +407,11 @@ class PreTrainOscar(BertPreTrainedModel):
         next_loss = 0
         if next_action is not None:
             next_loss = self.criterion(action_scores, next_action)
-        loss = mask_loss + next_loss
+        loss = mask_loss + next_loss + token_loss
 
         predicted_action = torch.argmax(action_scores, dim=1)
         predicted_words = torch.argmax(prediction_scores, dim=2)
+        token_prediction = torch.argmax(token_prediction, dim=2)
 
         predicted_words[labels == -1] = -1
 
@@ -419,4 +431,25 @@ class PreTrainOscar(BertPreTrainedModel):
         else:
             action_accuracy = 0
 
-        return loss, mask_loss, next_loss, words_accuracy, action_accuracy
+        token_prediction[token_labels == -1] = -1
+
+        ignored_tokens_no = torch.sum(token_labels == -1)
+        tokens_left = (
+            token_prediction.shape[0] * token_prediction.shape[1]
+        ) - ignored_tokens_no
+        tokens_left = tokens_left.type(torch.float)
+
+        token_accuracy = (
+            torch.sum(token_prediction == token_labels).type(torch.float)
+            - ignored_tokens_no
+        ) / tokens_left
+
+        return (
+            loss,
+            mask_loss,
+            next_loss,
+            token_loss,
+            words_accuracy,
+            action_accuracy,
+            token_accuracy,
+        )

@@ -7,6 +7,7 @@ import torch
 
 from model_oscar import ImageBertForSequenceClassificationwithAction, PreTrainOscar
 from oscar.transformers_src.pytorch_transformers import BertConfig, BertTokenizer
+from utils_data import load_detector_classes
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,8 @@ def load_oscar_model(
     config.cls_hidden_scale = 2
 
     config.action_space = args.action_space
+
+    config.detector_classes = len(load_detector_classes())
 
     if args.no_pretrained_model:
         model = model_class(config)

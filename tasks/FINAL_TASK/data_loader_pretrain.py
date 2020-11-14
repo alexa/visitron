@@ -105,6 +105,8 @@ class PretrainDataset(Dataset):
 
         if self.args.masked_token_prediction:
             self.detector_classes = load_detector_classes()
+            self.id2class = {i: c for i, c in enumerate(self.detector_classes)}
+            self.class2id = {c: i for i, c in enumerate(self.detector_classes)}
 
         if add_ndh_data:
             preprocessed_data = check_and_load_preprocessed_data(
@@ -147,6 +149,11 @@ class PretrainDataset(Dataset):
                     tokens = [tokenizer.cls_token]
                     segment_ids = [cls_token_segment_id]
 
+                    if self.args.masked_token_prediction:
+                        # mtp: masked token prediction
+                        # True if region token else False
+                        mtp_classes = [-1]
+
                     if not TAR_BACK:
                         if use_oscar_settings:
                             sep_token = tokenizer.sep_token
@@ -156,13 +163,8 @@ class PretrainDataset(Dataset):
                         tokens += [sep_token] + token_target
                         segment_ids += [tar_token_segment_id] * (len(token_target) + 1)
 
-                    if self.args.masked_token_prediction:
-                        mtp_mask += [False] * (len(token_target) + 1)
-
-                    if self.args.masked_token_prediction:
-                        # mtp: masked token prediction
-                        # True if region token else False
-                        mtp_mask = [False]
+                        if self.args.masked_token_prediction:
+                            mtp_classes += [-1] * (len(token_target) + 1)
 
                     for i, turn in enumerate(token_dialog_history):
                         if use_oscar_settings:
@@ -180,7 +182,7 @@ class PretrainDataset(Dataset):
                         segment_ids += [segment_id] * (len(turn) + 1)
 
                         if self.args.masked_token_prediction:
-                            mtp_mask += [False] * (len(turn) + 1)
+                            mtp_classes += [-1] * (len(turn) + 1)
 
                     if TAR_BACK:
                         if use_oscar_settings:
@@ -191,11 +193,14 @@ class PretrainDataset(Dataset):
                         tokens += [sep_token] + token_target
                         segment_ids += [tar_token_segment_id] * (len(token_target) + 1)
 
+                        if self.args.masked_token_prediction:
+                            mtp_classes += [-1] * (len(token_target) + 1)
+
                     tokens += [tokenizer.sep_token]
                     segment_ids += [sep_token_segment_id]
 
                     if self.args.masked_token_prediction:
-                        mtp_mask += [False]
+                        mtp_classes += [-1]
 
                     tokens += new_item["region_tokens"]
                     segment_ids += [sep_token_segment_id] * len(
@@ -203,8 +208,8 @@ class PretrainDataset(Dataset):
                     )
 
                     if self.args.masked_token_prediction:
-                        mtp_mask += [
-                            True if token in self.detector_classes else False
+                        mtp_classes += [
+                            self.class2id.get(token, -1)
                             for token in new_item["region_tokens"]
                         ]
 
@@ -212,7 +217,7 @@ class PretrainDataset(Dataset):
                     segment_ids += [sep_token_segment_id]
 
                     if self.args.masked_token_prediction:
-                        mtp_mask += [False]
+                        mtp_classes += [-1]
 
                     tokens += [tokenizer.pad_token] * (MAX_SEQ_LENGTH - len(tokens) - 1)
                     segment_ids += [pad_token_segment_id] * (
@@ -220,7 +225,7 @@ class PretrainDataset(Dataset):
                     )
 
                     if self.args.masked_token_prediction:
-                        mtp_mask += [False] * (MAX_SEQ_LENGTH - len(mtp_mask) - 1)
+                        mtp_classes += [-1] * (MAX_SEQ_LENGTH - len(mtp_classes) - 1)
 
                     new_item["target_dialog_tokens"] = tokens
                     new_item[
@@ -232,7 +237,7 @@ class PretrainDataset(Dataset):
                     new_item["target_dialog_segment_ids"] = segment_ids
 
                     if self.args.masked_token_prediction:
-                        new_item["masked_token_prediction_mask"] = mtp_mask
+                        new_item["token_classes"] = torch.LongTensor(mtp_classes)
 
                     ndh_data.append(new_item)
                 self.data.extend(ndh_data)
@@ -279,7 +284,7 @@ class PretrainDataset(Dataset):
                     if self.args.masked_token_prediction:
                         # mtp: masked token prediction
                         # True if region token else False
-                        mtp_mask = [False]
+                        mtp_classes = [-1]
 
                     for i, turn in enumerate(token_dialog_history):
                         if use_oscar_settings:
@@ -297,10 +302,13 @@ class PretrainDataset(Dataset):
                         segment_ids += [segment_id] * (len(turn) + 1)
 
                         if self.args.masked_token_prediction:
-                            mtp_mask += [False] * (len(turn) + 1)
+                            mtp_classes += [-1] * (len(turn) + 1)
 
                     tokens += [tokenizer.sep_token]
                     segment_ids += [sep_token_segment_id]
+
+                    if self.args.masked_token_prediction:
+                        mtp_classes += [-1]
 
                     tokens += new_item["region_tokens"]
                     segment_ids += [sep_token_segment_id] * len(
@@ -308,8 +316,8 @@ class PretrainDataset(Dataset):
                     )
 
                     if self.args.masked_token_prediction:
-                        mtp_mask += [
-                            True if token in self.detector_classes else False
+                        mtp_classes += [
+                            self.class2id.get(token, -1)
                             for token in new_item["region_tokens"]
                         ]
 
@@ -317,7 +325,7 @@ class PretrainDataset(Dataset):
                     segment_ids += [sep_token_segment_id]
 
                     if self.args.masked_token_prediction:
-                        mtp_mask += [False]
+                        mtp_classes += [-1]
 
                     tokens += [tokenizer.pad_token] * (MAX_SEQ_LENGTH - len(tokens) - 1)
                     segment_ids += [pad_token_segment_id] * (
@@ -325,7 +333,7 @@ class PretrainDataset(Dataset):
                     )
 
                     if self.args.masked_token_prediction:
-                        mtp_mask += [False] * (MAX_SEQ_LENGTH - len(mtp_mask) - 1)
+                        mtp_classes += [-1] * (MAX_SEQ_LENGTH - len(mtp_classes) - 1)
 
                     new_item["target_dialog_tokens"] = tokens
                     new_item[
@@ -337,7 +345,7 @@ class PretrainDataset(Dataset):
                     new_item["target_dialog_segment_ids"] = segment_ids
 
                     if self.args.masked_token_prediction:
-                        new_item["masked_token_prediction_mask"] = mtp_mask
+                        new_item["token_classes"] = torch.LongTensor(mtp_classes)
 
                     r2r_data.append(new_item)
                 self.data.extend(r2r_data)
@@ -552,7 +560,7 @@ class PretrainDataset(Dataset):
             for key, value in output.items()
         }
 
-    def _mask_tokens(self, inputs):
+    def _mask_tokens(self, inputs, token_classes):
 
         """ Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10% random, 10% original. """
 
@@ -567,13 +575,23 @@ class PretrainDataset(Dataset):
         probability_matrix.masked_fill_(
             torch.tensor(special_tokens_mask, dtype=torch.bool), value=0.0
         )
+
         # masked_indices = torch.bernoulli(torch.full(labels.shape, args.mlm_probability)).type(torch.ByteTensor)
         masked_indices = torch.bernoulli(probability_matrix).type(torch.bool)
+
+        if self.args.masked_token_prediction:
+            token_classes_mask = [val != -1 for val in token_classes.tolist()]
+            token_classes_mask = torch.tensor(token_classes_mask, dtype=torch.bool)
+            masked_indices.masked_fill_(token_classes_mask, value=1.0)
 
         attention_mask = torch.full(labels.shape, 1, dtype=torch.bool).masked_fill_(
             torch.tensor(att_mask, dtype=torch.bool), value=0
         )
+
         labels[~masked_indices] = -1  # We only compute loss on masked tokens
+
+        if self.args.masked_token_prediction:
+            labels[token_classes_mask] = -1
 
         # 80% of the time, we replace masked input tokens with tokenizer.mask_token ([MASK])
 
@@ -585,6 +603,13 @@ class PretrainDataset(Dataset):
         inputs[indices_replaced] = self.tokenizer.convert_tokens_to_ids(
             self.tokenizer.mask_token
         )
+        if self.args.masked_token_prediction:
+            indices_replaced = indices_replaced.masked_fill_(
+                token_classes_mask, value=1.0
+            )
+            inputs[token_classes_mask] = self.tokenizer.convert_tokens_to_ids(
+                self.tokenizer.mask_token
+            )
 
         # 10% of the time, we replace masked input tokens with random word
 
@@ -629,9 +654,16 @@ class PretrainDataset(Dataset):
 
     def _preprocess_item(self, item):
 
-        inputs, labels, attention_mask = self._mask_tokens(
-            item["target_dialog_tokens_id"]
-        )
+        if self.args.masked_token_prediction:
+            inputs, labels, attention_mask = self._mask_tokens(
+                item["target_dialog_tokens_id"],
+                item["token_classes"],
+            )
+        else:
+            inputs, labels, attention_mask = self._mask_tokens(
+                item["target_dialog_tokens_id"],
+                None,
+            )
 
         attention_mask = attention_mask.tolist()
 
@@ -683,9 +715,16 @@ class PretrainDataset(Dataset):
 
         if self.args.no_action_grounding:
             target_view_index = -1
+        if self.args.masked_token_prediction:
+            token_labels = item["token_classes"]
+            token_labels = token_labels.tolist() + [-1] * img_features.shape[0]
+            token_labels = torch.LongTensor(token_labels)
+        else:
+            token_labels = None
         output = {
             "input_ids": inputs,
             "labels": labels,
+            "token_labels": token_labels,
             "attention_mask": attention_mask,
             "img_feats": img_features,
             "img_location_embeddings": location_embeddings,
