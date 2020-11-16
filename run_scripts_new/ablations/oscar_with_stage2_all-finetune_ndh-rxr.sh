@@ -32,9 +32,9 @@ arguments="
 --img_feat_dir srv/img_features
 --img_feature_file ResNet-152-imagenet.tsv
 --data_dir srv/task_data/NDH/data
---model_name_or_path srv/oscar_pretrained_models/base-vg-labels/ep_107_1192087
---no_pretrained_model
---output_dir srv_2/results/viewpoint-2/temp
+--model_name_or_path srv_2/results/pretrain/pretrain_all_ndh_r2r-multi-gpu-ddp/checkpoints/checkpoint-30000
+--output_dir srv_2/results/viewpoint-2/ndh_rxr-oscar_stage2_all
+--add_rxr_data
 --feedback_method sample
 --path_type planner_path
 --max_seq_length 768

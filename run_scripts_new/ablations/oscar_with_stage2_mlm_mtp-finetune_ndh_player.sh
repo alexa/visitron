@@ -32,11 +32,10 @@ arguments="
 --img_feat_dir srv/img_features
 --img_feature_file ResNet-152-imagenet.tsv
 --data_dir srv/task_data/NDH/data
---model_name_or_path srv/oscar_pretrained_models/base-vg-labels/ep_107_1192087
---no_pretrained_model
---output_dir srv_2/results/viewpoint-2/temp
+--model_name_or_path srv_2/results/pretrain/pretrain_masked_lm_mtp_ndh_r2r-multi-gpu-ddp/checkpoints/checkpoint-30000
+--output_dir srv_2/results/viewpoint-2/ndh-oscar_stage2_lm_mtp-player
 --feedback_method sample
---path_type planner_path
+--path_type player_path
 --max_seq_length 768
 --img_feature_dim 2054
 --lstm_img_feature_dim 2048

@@ -41,7 +41,7 @@ arguments="
 --lstm_img_feature_dim 2048
 --per_gpu_train_batch_size 4
 --per_gpu_eval_batch_size 4
---learning_rate 5e-05
+--learning_rate 5e-03
 --weight_decay 0.05
 --num_iterations 50000
 --warmup_steps 0
