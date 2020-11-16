@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT-0
 
 import logging
+import os
 
 import torch
 
@@ -44,6 +45,15 @@ def load_oscar_model(
 
     config_class, model_class, tokenizer_class = MODEL_CLASS[model_name]
     config = config_class.from_pretrained(args.model_name_or_path)
+
+    if config is None:
+
+        logger.info("No config exists at this path!!!!")
+        tmp_root_folder = "srv/oscar_pretrained_models/base-vg-labels/ep_107_1192087"
+        config_path = os.path.join(tmp_root_folder, "config.json")
+        logger.info(f"Loading config from {config_path}")
+
+        config = BertConfig.from_pretrained(config_path)
 
     tokenizer = tokenizer_class.from_pretrained(
         args.model_name_or_path,

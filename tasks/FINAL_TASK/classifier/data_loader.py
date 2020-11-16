@@ -8,17 +8,98 @@ import sys
 import MatterSim
 import networkx as nx
 import numpy as np
+import torch
 import utils
 from get_oscar_model import special_tokens_dict
 from torch.autograd import Variable
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-from utils_data import (load_classifier_data, load_datasets, load_nav_graphs,
-                        truncate_dialogs)
+from utils_data import (
+    load_classifier_data,
+    load_datasets,
+    load_nav_graphs,
+    truncate_dialogs,
+)
 
 logger = logging.getLogger(__name__)
 
-from ..data_loader import EnvBatch, VLNDataloader_collate_fn
+
+def ClassifierDataloader_collate_fn(batch):
+    return batch
+
+
+class EnvBatch:
+    """A simple wrapper for a batch of MatterSim environments,
+    using discretized viewpoints and pretrained features"""
+
+    def __init__(self, feature_store, batch_size):
+
+        if feature_store is None:
+            self.features = None
+            self.image_w = 600
+            self.image_h = 600
+            self.vfov = 80
+        else:
+            self.features = feature_store["features"]
+            self.image_w = feature_store["image_w"]
+            self.image_h = feature_store["image_h"]
+            self.vfov = feature_store["vfov"]
+
+        self.batch_size = batch_size
+        self.sim = MatterSim.Simulator()
+        self.sim.setRenderingEnabled(False)
+        self.sim.setDiscretizedViewingAngles(True)
+        self.sim.setBatchSize(self.batch_size)
+        self.sim.setCameraResolution(self.image_w, self.image_h)
+        self.sim.setCameraVFOV(math.radians(self.vfov))
+        self.sim.initialize()
+
+    def _make_id(self, scanId, viewpointId):
+        return scanId + "_" + viewpointId
+
+    def newEpisodes(self, scanIds, viewpointIds, headings):
+        self.sim.newEpisode(scanIds, viewpointIds, headings, [0] * self.batch_size)
+
+    def getStates(self):
+        """ Get list of states augmented with precomputed image features. rgb field will be empty. """
+        feature_states = []
+        for state in self.sim.getState():
+            long_id = self._make_id(state.scanId, state.location.viewpointId)
+            if self.features:
+                feature = self.features[long_id]
+                feature_states.append((feature, state))
+            else:
+                feature_states.append((None, state))
+        return feature_states
+
+    def makeActions(self, actions):
+        """Take an action using the full state dependent action interface (with batched input).
+        Every action element should be an (index, heading, elevation) tuple."""
+        ix = []
+        heading = []
+        elevation = []
+        for i, h, e in actions:
+            ix.append(int(i))
+            heading.append(float(h))
+            elevation.append(float(e))
+        self.sim.makeAction(ix, heading, elevation)
+
+    def makeActionsatIndex(self, action, index):
+        no_action = (0, 0, 0)
+        ix = []
+        heading = []
+        elevation = []
+        for i in range(self.batch_size):
+            if i == index:
+                ix.append(int(action[0]))
+                heading.append(float(action[1]))
+                elevation.append(float(action[2]))
+            else:
+                ix.append(no_action[0])
+                heading.append(no_action[1])
+                elevation.append(no_action[2])
+
+        self.sim.makeAction(ix, heading, elevation)
 
 
 class ClassifierDataset(Dataset):
@@ -28,7 +109,6 @@ class ClassifierDataset(Dataset):
         splits=["train"],
         tokenizer=None,
         truncate_dialog=False,
-        path_type="planner_path",
     ):
         super(ClassifierDataset, self).__init__()
 
@@ -55,6 +135,8 @@ class ClassifierDataset(Dataset):
         MAX_SEQ_LENGTH = 512
         MAX_DIALOG_LEN = 512 - 4  # including [QUES]s and [ANS]s
         MAX_TARGET_LENGTH = 4 - 2  # [CLS], [TAR], [SEP] after QA and before Action
+
+        ratios = []
 
         for item in load_classifier_data(splits):
             self.scans.append(item["scan"])
@@ -138,26 +220,33 @@ class ClassifierDataset(Dataset):
 
             max_timestep = max(list(new_item["language"].keys()))
 
-            # for t in range(max_timestep):
-            #     if t in new_item["language"].keys():
-            #         continue
+            total_navigation_instances = len(new_item["player_path"])
+            total_question_asking_instances = len(list(new_item["language"].keys()))
+            ratios.append([total_navigation_instances, total_question_asking_instances])
+            for t in range(max_timestep):
+                if t in new_item["language"].keys():
+                    continue
 
-            #     if t == 0:
-            #         new_item["language"][0] = {
-            #             "tokens": zeroth_time_tokens,
-            #             "tokens_id": tokenizer.convert_tokens_to_ids(
-            #                 zeroth_time_tokens
-            #             ),
-            #             "segment_ids": zeroth_time_segment_ids,
-            #         }
-            #     else:
-            #         new_item["language"][t] = new_item["language"][t - 1]
+                if t == 0:
+                    new_item["language"][0] = {
+                        "tokens": zeroth_time_tokens,
+                        "tokens_id": tokenizer.convert_tokens_to_ids(
+                            zeroth_time_tokens
+                        ),
+                        "segment_ids": zeroth_time_segment_ids,
+                    }
+                else:
+                    new_item["language"][t] = new_item["language"][t - 1]
 
             new_item["max_timestep"] = max_timestep
             self.data.append(new_item)
 
         self.scans = set(self.scans)
         self.splits = splits
+
+        temp1 = sum([i for i, j in ratios])
+        temp2 = sum([j for i, j in ratios])
+        logger.info(f"total/+ve Class Ratio Mean: {temp1/temp2}")
 
     def __len__(self):
         return len(self.data)
@@ -187,6 +276,8 @@ class ClassifierDataLoader(DataLoader):
         self.angle_feature = utils.get_all_point_angle_feature()
         self.sim = utils.new_simulator()
         self.buffered_state_dict = {}
+
+        self.args = self.dataset.args
 
         self.batch = None
 
@@ -297,9 +388,14 @@ class ClassifierDataLoader(DataLoader):
         seq_tensor = []
         segment_ids = []
         for item in self.batch:
-            t = min(timestep, item["max_timestep"] - 1)
-            tokens = item["language"][t]["tokens_id"]
-            segment = item["language"][t]["segment_ids"]
+            t = min(timestep, item["max_timestep"])
+            try:
+                tokens = item["language"][t]["tokens_id"]
+                segment = item["language"][t]["segment_ids"]
+            except:
+                import pdb
+
+                pdb.set_trace()
             seq_tensor.append(tokens)
             segment_ids.append(segment)
 
@@ -309,9 +405,13 @@ class ClassifierDataLoader(DataLoader):
         seq_lengths = np.argmax(seq_tensor == pad_token_id, axis=1)
         seq_lengths[seq_lengths == 0] = seq_tensor.shape[1]  # Full length
 
-        mask = (sorted_tensor == self.pad_token_id)[
+        mask = (seq_tensor == pad_token_id)[
             :, : seq_lengths[0]
         ]  # seq_lengths[0] is the Maximum length
+
+        seq_tensor = torch.from_numpy(seq_tensor)
+        segment_ids = torch.from_numpy(segment_ids)
+        mask = torch.from_numpy(mask)
 
         return (
             Variable(seq_tensor, requires_grad=False).long().to(self.args.device),
@@ -327,10 +427,7 @@ class ClassifierDataLoader(DataLoader):
 
             base_view_id = state.viewIndex
 
-            if self.dataset.path_type in item:
-                target = item[self.dataset.path_type][-1]
-            else:
-                target = item["start_pano"]["pano"]
+            target = item["player_path"][-1]
 
             candidate = self.make_candidate(
                 feature,
@@ -367,11 +464,7 @@ class ClassifierDataLoader(DataLoader):
     def reset(self):
         """ Load a new minibatch / episodes. """
         scanIds = [item["scan"] for item in self.batch]
-        if self.dataset.path_type in self.batch[0]:
-            viewpointIds = [item[self.dataset.path_type][0] for item in self.batch]
-        else:
-            # In the test dataset there is no path provided, so we just load the start viewpoint
-            viewpointIds = [item["start_pano"]["pano"] for item in self.batch]
+        viewpointIds = [item["start_pano"]["pano"] for item in self.batch]
         headings = [item["start_pano"]["heading"] for item in self.batch]
         self.env.newEpisodes(scanIds, viewpointIds, headings)
         return self._get_obs()

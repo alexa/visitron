@@ -83,6 +83,13 @@ parser.add_argument(
 parser.add_argument("--no_oscar_setting", dest="oscar_setting", action="store_false")
 
 parser.add_argument(
+    "--only_finetune_classifier",
+    default=False,
+    action="store_true",
+    help="Only finetune Question Asking Classifier",
+)
+
+parser.add_argument(
     "--add_ndh_data",
     default=True,
     action="store_true",
@@ -113,6 +120,13 @@ parser.add_argument(
     type=str,
     choices=["lstm", "oscar"],
     help="Which encoder to use",
+)
+
+parser.add_argument(
+    "--question_asking_class_weight",
+    default=5,
+    type=int,
+    help="Class Wwights for Question Asking Classifier.",
 )
 
 ## Input parameters

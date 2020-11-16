@@ -8,6 +8,7 @@ import sys
 import time
 from collections import OrderedDict
 
+import model
 import numpy as np
 import torch
 import torch.distributed as dist
@@ -15,12 +16,12 @@ import torch.distributions as D
 import torch.nn as nn
 import torch.nn.functional as F
 import utils
+from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
+                             matthews_corrcoef)
 from torch import optim
 from torch.autograd import Variable
 from torch.optim import Adam
 from utils import padding_idx
-
-import model
 
 
 class BaseAgent(object):
@@ -72,27 +73,27 @@ class Agent(BaseAgent):
     """ An agent based on Oscar model. """
 
     # # For now, the agent can't pick which forward move to make - just the one in the middle
-    # model_actions = [
-    #     "left",
-    #     "right",
-    #     "up",
-    #     "down",
-    #     "forward",
-    #     "<end>",
-    #     "<start>",
-    #     "<ignore>",
-    # ]
-    # # fmt: off
-    # env_actions = {
-    #   "left":     (0, -1,  0),  # left
-    #   "right":    (0,  1,  0),  # right
-    #   "up":       (0,  0,  1),  # up
-    #   "down":     (0,  0, -1),  # down
-    #   "forward":  (1,  0,  0),  # forward
-    #   "<end>":    (0,  0,  0),  # <end>
-    #   "<start>":  (0,  0,  0),  # <start>
-    #   "<ignore>": (0,  0,  0)   # <ignore>
-    # }
+    model_actions = [
+        "left",
+        "right",
+        "up",
+        "down",
+        "forward",
+        "<end>",
+        "<start>",
+        "<ignore>",
+    ]
+    # fmt: off
+    env_actions = {
+      "left":     (0, -1,  0),  # left
+      "right":    (0,  1,  0),  # right
+      "up":       (0,  0,  1),  # up
+      "down":     (0,  0, -1),  # down
+      "forward":  (1,  0,  0),  # forward
+      "<end>":    (0,  0,  0),  # <end>
+      "<start>":  (0,  0,  0),  # <start>
+      "<ignore>": (0,  0,  0)   # <ignore>
+    }
     # fmt: on
     feedback_options = ["teacher", "argmax", "sample"]
 
@@ -111,8 +112,6 @@ class Agent(BaseAgent):
         self.args = args
         self.tokenizer = tokenizer
 
-        self.args.no_pretrained_model = False
-
         self.pad_token_id = 0
         # Models
 
@@ -125,7 +124,7 @@ class Agent(BaseAgent):
             bidirectional=args.bidir,
         ).to(args.device)
 
-        self.decoder = model.AttnDecoderLSTM(
+        self.decoder = model.AttnDecoderLSTMwithClassifier(
             args.angle_feat_size,
             args.aemb,
             args.rnn_dim,
@@ -133,6 +132,16 @@ class Agent(BaseAgent):
             feature_size=self.args.lstm_img_feature_dim + args.angle_feat_size,
         ).to(args.device)
         self.models = (self.encoder, self.decoder)
+
+        # for param in self.encoder.parameters():
+        #     param.requires_grad = False
+
+        if self.args.only_finetune_classifier:
+            for param in self.decoder.parameters():
+                param.requires_grad = False
+
+            for param in self.decoder.question_linear.parameters():
+                param.requires_grad = True
 
         # Optimizers
         self.encoder_optimizer = Adam(self.encoder.parameters(), lr=args.learning_rate)
@@ -144,10 +153,17 @@ class Agent(BaseAgent):
 
         # Evaluations
         self.losses = []
-        self.criterion = nn.CrossEntropyLoss(ignore_index=args.ignoreid)
+        self.criterion = nn.BCEWithLogitsLoss(
+            reduction="none", pos_weight=torch.Tensor([self.args.question_asking_class_weight]).to(self.args.device)
+        )
 
         self.episode_len = episode_len
         self.losses = []
+
+        self.logs = {"predictions": [], "labels": []}
+        self.metrics = {}
+
+        self.sigmoid = nn.Sigmoid()
 
     # @staticmethod
     # def n_inputs():
@@ -332,12 +348,31 @@ class Agent(BaseAgent):
                 )
                 take_action(i, idx, select_candidate["idx"])
 
+    def get_question_asking_target(self, timestep, obs, ended):
+        target = np.zeros(len(obs), dtype=np.float32)
+        ignore_indices = np.zeros(len(obs), dtype=np.bool)
+        for i, ob in enumerate(obs):
+            if (
+                ended[i] or (timestep + 1) > obs[i]["max_timestep"]
+            ):  # Just ignore this index
+                target[i] = 0.0
+                ignore_indices[i] = True
+            else:
+                if (timestep + 1) in ob["request_locations"]:
+                    target[i] = 1.0
+                else:
+                    target[i] = 0.0
+        return (
+            torch.from_numpy(target).to(self.args.device).unsqueeze(1),
+            torch.from_numpy(ignore_indices).to(self.args.device),
+        )
+
     def rollout(self, train=True):
 
         batch = self._get_batch()
         batch = self._verify_batch_size(batch)
 
-        scan_ids = [item["scan"] for item in batch]
+        # scan_ids = [item["scan"] for item in batch]
 
         obs = np.array(self.dataloader.reset())
 
@@ -353,7 +388,7 @@ class Agent(BaseAgent):
         ]
 
         # For test result submission
-        visited = [set() for _ in obs]
+        # visited = [set() for _ in obs]
 
         ended = np.array([False] * batch_size)
 
@@ -362,17 +397,15 @@ class Agent(BaseAgent):
         if self.args.detach_loss:
             self.non_avg_loss = torch.zeros(1).to(self.args.device)
 
-        for t in range(self.episode_len):
-            (
-                seq,
-                segment_ids,
-                seq_mask,
-                seq_lengths,
-            ) = self.dataloader.get_language_input(t)
+        pass_through_encoder = False
 
-            # seq, segment_ids, seq_mask, seq_lengths, perm_idx = self._sort_batch(batch)
-            seq_lengths = torch.tensor(seq_lengths)
+        (seq, segment_ids, seq_mask, seq_lengths,) = self.dataloader.get_language_input(
+            timestep=0, pad_token_id=self.pad_token_id
+        )
 
+        # seq, segment_ids, seq_mask, seq_lengths, perm_idx = self._sort_batch(batch)
+        seq_lengths = torch.tensor(seq_lengths)
+        with torch.no_grad():
             ctx, h_t, c_t = self.encoder(
                 inputs=seq,
                 lengths=seq_lengths,
@@ -381,9 +414,55 @@ class Agent(BaseAgent):
             )
             ctx_mask = seq_mask
 
-            if t == 0:
-                h1 = h_1
-                c_t = c_1
+        # episode_labels = [[]] * batch_size
+        # episode_predictions = [[]] * batch_size
+        for t in range(self.episode_len):
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+            pass_through_encoder = False
+            if t != 0:
+                request_batch_idx = []
+                for i, ob in enumerate(batch):
+                    if t in ob["request_locations"]:
+                        request_batch_idx.append(i)
+                        pass_through_encoder = True
+
+                request_batch_idx = torch.LongTensor(request_batch_idx)
+            if pass_through_encoder:
+                (
+                    seq,
+                    segment_ids,
+                    seq_mask,
+                    seq_lengths,
+                ) = self.dataloader.get_language_input(
+                    timestep=t, pad_token_id=self.pad_token_id
+                )
+
+                # seq, segment_ids, seq_mask, seq_lengths, perm_idx = self._sort_batch(batch)
+                seq_lengths = torch.tensor(seq_lengths)
+                with torch.no_grad():
+                    new_ctx, new_h_t, new_c_t = self.encoder(
+                        inputs=seq,
+                        lengths=seq_lengths,
+                        mask=seq_mask,
+                        token_type_ids=segment_ids,
+                    )
+                    new_ctx_mask = seq_mask
+
+                    ctx = new_ctx
+                    h_t = new_h_t
+                    c_t = new_c_t
+                    ctx_mask = new_ctx_mask
+
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+
+                # ctx[request_batch_idx] = new_ctx[request_batch_idx]
+                # h_t[request_batch_idx] = new_h_t[request_batch_idx]
+                # c_t[request_batch_idx] = new_c_t[request_batch_idx]
+                # ctx_mask[request_batch_idx] = new_ctx_mask[request_batch_idx]
 
             input_a_t, f_t, candidate_feat, candidate_leng = self.get_input_feat(obs)
             h_t, c_t, logit, h1 = self.decoder(
@@ -391,44 +470,64 @@ class Agent(BaseAgent):
                 f_t,
                 candidate_feat,
                 h_t,
-                h1,
                 c_t,
                 ctx,
                 ctx_mask,
             )
 
-            # Mask outputs where agent can't move forward
-            # Here the logit is [b, max_candidate]
-            candidate_mask = utils.length2mask(candidate_leng, self.args.device)
-            if self.args.submit:  # Avoding cyclic path
-                for ob_id, ob in enumerate(perm_obs):
-                    visited[ob_id].add(ob["viewpoint"])
-                    for c_id, c in enumerate(ob["candidate"]):
-                        if c["viewpointId"] in visited[ob_id]:
-                            candidate_mask[ob_id][c_id] = 1
-            logit.masked_fill_(candidate_mask, -float("inf"))
+            # loss
+            question_target, ignore_indices = self.get_question_asking_target(
+                timestep=t, obs=batch, ended=ended
+            )
 
-            # Supervised training
-            target = self._teacher_action(perm_obs, ended)
+            # logit[ignore_indices] = 0.0
+            # question_target[ignore_indices] = 0.0
 
-            current_loss = self.criterion(logit, target)
+            # question_target[ignore_indices] = logit[ignore_indices]
+
+            unmasked_loss = self.criterion(logit, question_target)
+            current_loss = unmasked_loss * ~ignore_indices
+            if len(current_loss) - ignore_indices.sum() == 0:
+                current_loss = current_loss * 0
+                current_loss = torch.sum(current_loss)
+            else:
+                # if question_target.item() == 1:
+                #     current_loss *= 5
+                current_loss = torch.sum(current_loss) / (
+                    len(current_loss) - ignore_indices.sum()
+                )
+            # if self.loss.shape != current_loss.shape:
+            #     import pdb
+
+            #     pdb.set_trace()
             if self.args.detach_loss:
                 self.non_avg_loss += current_loss
             else:
                 self.loss += current_loss
 
+            prediction = self.sigmoid(logit).detach()
+            prediction[prediction >= 0.5] = 1
+            prediction[prediction < 0.5] = 0
+            for i, (pred, label) in enumerate(
+                zip(prediction, question_target.squeeze(1))
+            ):
+                pred = pred.item()
+                label = label.item()
+                if ignore_indices[i].item():
+                    pass
+                    # episode_predictions[i].append(-1)
+                    # episode_labels[i].append(-1)
+                else:
+                    self.logs["predictions"].append(pred)
+                    self.logs["labels"].append(label)
+                    # episode_predictions[i].append(pred)
+                    # episode_labels[i].append(label)
+
+            # Supervised training
+            target = self._teacher_action(obs, ended)
+
             # Determine next model inputs
-            if self.feedback == "teacher":
-                a_t = target  # teacher forcing
-            elif self.feedback == "argmax":
-                _, a_t = logit.max(1)  # student forcing - argmax
-                a_t = a_t.detach()
-            elif self.feedback == "sample":
-                probs = F.softmax(logit, dim=1)
-                m = D.Categorical(probs)
-                a_t = m.sample()  # sampling an action from model
-            else:
-                sys.exit("Invalid feedback option")
+            a_t = target  # teacher forcing
 
             # Prepare environment action
             # NOTE: Env action is in the perm_obs space
@@ -442,9 +541,8 @@ class Agent(BaseAgent):
                     cpu_a_t[i] = -1  # Change the <end> and ignore action to -1
 
             # Make action and get the new state
-            self.make_equiv_action(cpu_a_t, perm_obs, perm_idx, traj)
+            self.make_equiv_action(a_t=cpu_a_t, perm_obs=obs, traj=traj)
             obs = np.array(self.dataloader._get_obs())
-            perm_obs = obs[perm_idx]
 
             # Update the finished actions
             # -1 means ended or ignored (already ended)
@@ -472,6 +570,9 @@ class Agent(BaseAgent):
                         self.loss.detach_()
                         self.non_avg_loss = torch.zeros(1).to(self.args.device)
 
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
             # Early exit if all ended
             if ended.all():
                 break
@@ -481,23 +582,27 @@ class Agent(BaseAgent):
             self.loss = self.loss / self.episode_len
 
         self.losses.append(self.loss.item())
+
+        # self.logs["prediction"].append(episode_predictions)
+        # self.logs["labels"].append(episode_labels)
+
         return traj
 
-    def test(self, use_dropout=False, feedback="argmax", allow_cheat=False):
+    def _update_metrics(self, logs):
+        label = logs["labels"]
+        pred = logs["predictions"]
+
+        self.metrics["accuracy"] = accuracy_score(label, pred)
+        self.metrics["f1_score"] = f1_score(label, pred)
+        self.metrics["balanced_accuracy_score"] = balanced_accuracy_score(label, pred)
+        self.metrics["matthews_corrcoef"] = matthews_corrcoef(label, pred)
+
+    def test(self):
         """ Evaluate once on each instruction in the current environment """
-        if not allow_cheat:  # permitted for purpose of calculating validation loss only
-            assert feedback in [
-                "argmax",
-                "sample",
-            ]  # no cheating by using teacher at test time!
-        self.feedback = feedback
-        if use_dropout:
-            self.encoder.train()
-            self.decoder.train()
-        else:
-            self.encoder.eval()
-            self.decoder.eval()
+        self.encoder.eval()
+        self.decoder.eval()
         super(Agent, self).test()
+        self._update_metrics(self.logs)
 
     def train(self, n_iters, feedback="teacher"):
         """ Train for a given number of iterations """
@@ -508,8 +613,12 @@ class Agent(BaseAgent):
         self.decoder.train()
 
         self.losses = []
+        # (n_iters, batch_size, episode_len)
+        self.logs = {"predictions": [], "labels": []}
+
         for iter in range(1, n_iters + 1):
-            self.encoder_optimizer.zero_grad()
+            if not self.args.only_finetune_classifier:
+                self.encoder_optimizer.zero_grad()
             self.decoder_optimizer.zero_grad()
 
             self.rollout()
@@ -520,11 +629,18 @@ class Agent(BaseAgent):
                     dist.all_reduce(self.loss, op=dist.ReduceOp.SUM)
                 self.loss.backward()
 
-            torch.nn.utils.clip_grad_norm(self.encoder.parameters(), 40.0)
-            torch.nn.utils.clip_grad_norm(self.decoder.parameters(), 40.0)
+            # if not self.args.only_finetune_classifier:
+            #     torch.nn.utils.clip_grad_norm(self.encoder.parameters(), 40.0)
+            # torch.nn.utils.clip_grad_norm(self.decoder.parameters(), 40.0)
 
-            self.encoder_optimizer.step()
+            if not self.args.only_finetune_classifier:
+                self.encoder_optimizer.step()
             self.decoder_optimizer.step()
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+        self._update_metrics(self.logs)
 
     def save(self, encoder_path, decoder_path):
         """ Snapshot models """
@@ -568,6 +684,26 @@ class Agent(BaseAgent):
                 new_decoder_weights[name] = v
         else:
             new_decoder_weights = decoder_weights
+
+        # temp_layer1 = nn.Linear(self.decoder.hidden_size, 1)
+        # if "question_linear.0.weight" not in new_decoder_weights:
+        #     new_decoder_weights["question_linear.0.weight"] = temp_layer1.weight
+        # if "question_linear.0.bias" not in new_decoder_weights:
+        #     new_decoder_weights["question_linear.0.bias"] = temp_layer1.bias
+
+        temp_layer1 = nn.Linear(
+            self.decoder.hidden_size, int(self.decoder.hidden_size // 2)
+        )
+        temp_layer2 = nn.Linear(int(self.decoder.hidden_size // 2), 1)
+
+        if "question_linear.0.weight" not in new_decoder_weights:
+            new_decoder_weights["question_linear.0.weight"] = temp_layer1.weight
+        if "question_linear.0.bias" not in new_decoder_weights:
+            new_decoder_weights["question_linear.0.bias"] = temp_layer1.bias
+        if "question_linear.2.weight" not in new_decoder_weights:
+            new_decoder_weights["question_linear.2.weight"] = temp_layer2.weight
+        if "question_linear.2.bias" not in new_decoder_weights:
+            new_decoder_weights["question_linear.2.bias"] = temp_layer2.bias
 
         self.encoder.load_state_dict(new_encoder_weights)
         self.decoder.load_state_dict(new_decoder_weights)

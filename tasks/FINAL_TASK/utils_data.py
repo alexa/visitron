@@ -158,8 +158,14 @@ def load_classifier_data(splits):
                 dialog[timestep] = dialog_history
                 last_timestep = timestep
             else:
+                if timestep != turn["nav_idx"]:
+                    logger.info(
+                        "Timestep for oracle and navigator mismatch, correcting it. "
+                        f"Timestep: {timestep} turn['nav_idx']: {turn['nav_idx']}"
+                    )
+                    # print(item["dialog_history"])
                 assert turn["role"] == "oracle"
-                assert timestep == turn["nav_idx"]
+                # assert timestep == turn["nav_idx"]
                 message = turn["message"]
                 dialog_history = dialog[timestep]
                 dialog_history.append(message)

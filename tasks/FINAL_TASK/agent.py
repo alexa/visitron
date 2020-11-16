@@ -392,7 +392,6 @@ class Agent(BaseAgent):
         h1 = h_t
 
         for t in range(self.episode_len):
-
             input_a_t, f_t, candidate_feat, candidate_leng = self.get_input_feat(
                 perm_obs
             )

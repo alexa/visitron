@@ -441,7 +441,7 @@ class AttnDecoderLSTMwithClassifier(nn.Module):
         dropout_ratio,
         feature_size=2048 + 4,
     ):
-        super(AttnDecoderLSTM, self).__init__()
+        super(AttnDecoderLSTMwithClassifier, self).__init__()
         self.embedding_size = embedding_size
         self.feature_size = feature_size
         self.hidden_size = hidden_size
@@ -454,7 +454,15 @@ class AttnDecoderLSTMwithClassifier(nn.Module):
         # self.attention_layer = SoftDotAttention(hidden_size, 2 * hidden_size)
         self.attention_layer = SoftDotAttention(hidden_size, hidden_size)
 
-        self.question_linear = nn.Sequential(nn.Linear(hidden_size, 1), nn.Sigmoid())
+        # self.question_linear = nn.Sequential(
+        #     nn.Linear(hidden_size, 1),
+        # )
+
+        self.question_linear = nn.Sequential(
+            nn.Linear(hidden_size, int(hidden_size // 2)),
+            nn.Tanh(),
+            nn.Linear(int(hidden_size // 2), 1),
+        )
         self.candidate_att_layer = SoftDotAttention(hidden_size, feature_size)
 
     def forward(
@@ -462,7 +470,6 @@ class AttnDecoderLSTMwithClassifier(nn.Module):
         action,
         feature,
         cand_feat,
-        h_0,
         prev_h1,
         c_0,
         ctx,
@@ -473,13 +480,13 @@ class AttnDecoderLSTMwithClassifier(nn.Module):
         action: batch x angle_feat_size
         feature: batch x 36 x (feature_size + angle_feat_size)
         cand_feat: batch x cand x (feature_size + angle_feat_size)
-        h_0: batch x hidden_size
         prev_h1: batch x hidden_size
         c_0: batch x hidden_size
         ctx: batch x seq_len x dim
         ctx_mask: batch x seq_len - indices to be masked
         already_dropfeat: used in EnvDrop
         """
+
         action_embeds = self.embedding(action)
 
         # Adding Dropout
@@ -501,6 +508,6 @@ class AttnDecoderLSTMwithClassifier(nn.Module):
 
         logit = self.question_linear(h_tilde_drop)
 
-        # _, _ = self.candidate_att_layer(h_tilde_drop, cand_feat, output_prob=False)
+        _, _ = self.candidate_att_layer(h_tilde_drop, cand_feat, output_prob=False)
 
         return h_1, c_1, logit, h_tilde
