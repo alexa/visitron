@@ -8,6 +8,7 @@ import logging
 import math
 import os
 import pickle
+import re
 import sys
 import time
 from itertools import chain
@@ -174,6 +175,78 @@ def load_classifier_data(splits):
         item["dialog_history"] = dialog
         item["request_locations"] = list(dialog.keys())
         data.append(item)
+    return data
+
+
+def load_gameplay_data(splits):
+    data = []
+    data_root = get_data_root("CVDN")
+    for split in splits:
+        assert split in ["train", "val_seen", "val_unseen", "test"]
+        logger.info("Using CVDN for " + split + "!\n\n\n")
+        data_source = data_root + split + ".json"
+        with open(data_source) as f:
+            items = json.load(f)
+            new_items = []
+            for item in items:
+                item["inst_idx"] = item["idx"]
+                item["planner_path"] = item["planner_nav_steps"]
+                item["player_path"] = item["nav_steps"]
+                item["nav_history"] = item["player_path"]
+                heading, elevation = 2.0, 17.5
+                if "nav_camera" in item and len(item["nav_camera"]) > 0:
+                    nav_camera = item["nav_camera"][0]
+                    if "message" in nav_camera:
+                        heading = nav_camera["message"][-1]["heading"]
+                        elevation = nav_camera["message"][-1]["elevation"]
+                item["start_pano"] = {
+                    "heading": heading,
+                    "elevation": elevation,
+                    "pano": item["planner_nav_steps"][0],
+                }
+                nav_ins, ora_ins, request_locations, nav_seen, ora_seen, nav_idx = (
+                    [],
+                    [],
+                    {},
+                    [],
+                    [],
+                    0,
+                )
+                for index, turn in enumerate(item["dialog_history"]):
+                    if turn["role"] == "navigator":
+                        nav_ins.append(turn["message"])
+                        if len(ora_seen) > 0:
+                            request_locations[nav_idx] = [
+                                " ".join(nav_seen),
+                                " ".join(ora_seen),
+                                index,
+                            ]
+                            ora_seen = []
+                            nav_seen = []
+                        nav_seen.append(turn["message"])
+                    else:
+                        ora_ins.append(turn["message"])
+                        if len(nav_seen) > 0:
+                            nav_idx = int(turn["nav_idx"])
+                            ora_seen.append(turn["message"])
+                if len(ora_seen) > 0:
+                    request_locations[nav_idx] = [
+                        nav_seen[-1],
+                        ora_seen[-1],
+                        len(item["dialog_history"]),
+                    ]  # [' '.join(nav_seen), ' '.join(ora_seen), len(item['dialog_history'])]
+                item["nav_instructions"] = " ".join(nav_ins)
+                item["ora_instructions"] = " ".join(ora_ins)
+                if (
+                    len(item["nav_instructions"]) == 0
+                    or len(item["ora_instructions"]) == 0
+                ):
+                    continue
+                item["request_locations"] = request_locations
+                item["inst_idx"] = str(item["inst_idx"])
+                assert len(item["player_path"]) > 1, item["player_path"]
+                new_items.append(item)
+            data += new_items
     return data
 
 
@@ -532,3 +605,99 @@ class FeaturesReader:
         if key not in self.keys:
             raise TypeError(f"invalid key: {key}")
         return self.region_tokens[key]
+
+
+def get_encoding_for_oscar(tokenizer, obs):
+    truncate_dialog = True
+
+    use_oscar_settings = True
+
+    TAR_BACK = False
+
+    pad_token_id = 0
+
+    cls_token_segment_id = 0
+    pad_token_segment_id = 0
+    sep_token_segment_id = 0
+
+    tar_token_segment_id = 1
+    ques_token_segment_id = 2
+    ans_token_segment_id = 3
+
+    MAX_SEQ_LENGTH = 512
+    MAX_DIALOG_LEN = 512 - 4  # including [QUES]s and [ANS]s
+    MAX_TARGET_LENGTH = 4 - 2  # [CLS], [TAR], [SEP] after QA and before Action
+    # # TODO: ^^ add them as args ^^
+
+    # # TOTAL 768
+    new_obs = []
+    for item in obs:
+        instruction = item["instructions"]
+
+        target = instruction.split("<TAR>")[1]
+        rest = instruction.split("<TAR>")[0]
+        dialog_history = re.split("<NAV>|<ORA>", rest)
+        dialog_history = [item for item in dialog_history if item != ""]
+
+        token_target = tokenizer.tokenize(target)
+        token_target = token_target[:MAX_TARGET_LENGTH]
+
+        token_dialog_history = []
+        for turn in dialog_history:
+            token_turn = tokenizer.tokenize(turn)
+            token_dialog_history.append(token_turn)
+
+        if truncate_dialog:
+            # max_seq_length - 4 as accounting for [CLS], [TAR], Target, [SEP]
+            token_dialog_history = truncate_dialogs(
+                token_dialog_history, amount=MAX_DIALOG_LEN, left=True
+            )
+
+        tokens = [tokenizer.cls_token]
+        segment_ids = [cls_token_segment_id]
+
+        if not TAR_BACK:
+            if use_oscar_settings:
+                sep_token = tokenizer.sep_token
+            else:
+                sep_token = tokenizer.tar_token
+
+            tokens += [sep_token] + token_target
+            segment_ids += [tar_token_segment_id] * (len(token_target) + 1)
+
+        for i, turn in enumerate(token_dialog_history):
+            if use_oscar_settings:
+                sep_token = tokenizer.sep_token
+                segment_id = sep_token_segment_id
+            else:
+                if i % 2 == 0:
+                    sep_token = tokenizer.ques_token
+                    segment_id = ques_token_segment_id
+                else:
+                    sep_token = tokenizer.ans_token
+                    segment_id = ans_token_segment_id
+
+            tokens += [sep_token] + turn
+            segment_ids += [segment_id] * (len(turn) + 1)
+
+        if TAR_BACK:
+            if use_oscar_settings:
+                sep_token = tokenizer.sep_token
+            else:
+                sep_token = tokenizer.tar_token
+
+            tokens += [sep_token] + token_target
+            segment_ids += [tar_token_segment_id] * (len(token_target) + 1)
+
+        tokens += [tokenizer.sep_token]
+        segment_ids += [sep_token_segment_id]
+
+        tokens += [pad_token_id] * (MAX_SEQ_LENGTH - len(tokens) - 1)
+        segment_ids += [pad_token_segment_id] * (MAX_SEQ_LENGTH - len(segment_ids) - 1)
+
+        token_ids = tokenizer.convert_tokens_to_ids(tokens)
+        new_obs.append({"instr_encoding": token_ids, "segment_ids": segment_ids})
+
+    # "tokens": tokens
+
+    return new_obs

@@ -18,8 +18,13 @@ from tqdm import tqdm
 from data_loader_pretrain import PretrainDataset
 from get_oscar_model import load_oscar_model
 from oscar.transformers_src.pytorch_transformers import (
-    AdamW, BertConfig, BertTokenizer, WarmupConstantSchedule,
-    WarmupLinearSchedule, modeling_bert)
+    AdamW,
+    BertConfig,
+    BertTokenizer,
+    WarmupConstantSchedule,
+    WarmupLinearSchedule,
+    modeling_bert,
+)
 from params import args
 from utils import set_seed
 from utils_data import FeaturesReader, timeSince
