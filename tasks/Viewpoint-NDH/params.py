@@ -104,6 +104,9 @@ parser.add_argument(
     "--angle_feat_size", default=4, type=int, help="Size of angle feature",
 )
 parser.add_argument(
+    "--action_space", default=36, type=int, help="Number of actions",
+)
+parser.add_argument(
     "--ignoreid", default=-100, type=int, help="Ignore id",
 )
 parser.add_argument(

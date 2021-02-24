@@ -1,26 +1,23 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
+import base64
+import json
+import logging
+import math
+import random
 import sys
 
-sys.path.append("build")
 import MatterSim
+import networkx as nx
 
 # import csv
 import numpy as np
-import math
-import base64
-import logging
-import json
-import random
-import networkx as nx
-
-import utils
-from utils_data import load_datasets, load_nav_graphs, truncate_dialogs
-from utils_model import special_tokens_dict
-
-from torch.utils.data import Dataset, DataLoader
 import torch
+from get_oscar_model import special_tokens_dict
+from torch.utils.data import DataLoader, Dataset
+
+from utils_data import load_datasets, load_nav_graphs, truncate_dialogs
 
 logger = logging.getLogger(__name__)
 

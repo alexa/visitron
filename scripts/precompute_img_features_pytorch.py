@@ -331,3 +331,4 @@ if __name__ == "__main__":
         merge_tsvs()
     data = read_tsv(MERGED)
     print("Completed %d viewpoints" % len(data))
+                                                                                       
