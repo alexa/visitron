@@ -19,11 +19,8 @@ from data_loader_pretrain import PretrainDataset
 from get_oscar_model import load_oscar_model
 from oscar.transformers_src.pytorch_transformers import (
     AdamW,
-    BertConfig,
-    BertTokenizer,
     WarmupConstantSchedule,
     WarmupLinearSchedule,
-    modeling_bert,
 )
 from params import args
 from utils import set_seed
@@ -642,15 +639,6 @@ def main():
     set_seed(args.seed, args.n_gpu)
 
     logger.info("Pretraining parameters %s", args)
-
-    # if args.debug:
-    #     logger.info(f"DEBUG - {args.debug}: using dummy features & region labels")
-    #     features = None
-    #     region_labels = None
-    # else:
-    #     features, region_labels = load_per_view_img_pickle_features(
-    #         args.img_feat_dir, args.img_feature_file
-    #     )
 
     img_feature_path = os.path.join(args.img_feat_dir, args.img_feature_file)
     features_reader = FeaturesReader(

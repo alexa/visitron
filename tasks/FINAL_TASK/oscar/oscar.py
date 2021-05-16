@@ -9,19 +9,13 @@ import math
 import torch
 import torch.nn.functional as F
 from torch import nn
-from torch.nn import CrossEntropyLoss, MSELoss
 
 from oscar.transformers_src.pytorch_transformers.modeling_bert import (
     BertAttention,
-    BertEmbeddings,
     BertEncoder,
     BertIntermediate,
     BertLayer,
-    BertLayerNorm,
-    BertOnlyMLMHead,
     BertOutput,
-    BertPooler,
-    BertPreTrainedModel,
     BertSelfAttention,
     BertSelfOutput,
 )

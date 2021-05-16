@@ -14,7 +14,6 @@ import numpy as np
 
 pp = pprint.PrettyPrinter(indent=4)
 
-from data_loader import VLNDataLoader, VLNDataloader_collate_fn, VLNDataset
 from utils_data import load_datasets, load_nav_graphs
 
 

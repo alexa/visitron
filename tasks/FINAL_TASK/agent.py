@@ -2,10 +2,7 @@
 # SPDX-License-Identifier: MIT-0
 
 import json
-import os
-import random
 import sys
-import time
 from collections import OrderedDict
 
 import numpy as np
@@ -20,7 +17,6 @@ from torch.optim import Adam
 
 import model
 import utils
-from utils import padding_idx
 
 
 class BaseAgent(object):

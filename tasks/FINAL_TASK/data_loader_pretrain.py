@@ -1,28 +1,17 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
-import base64
-import json
 import logging
-import math
-import random
-import sys
 
-import MatterSim
-import networkx as nx
-
-# import csv
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import Dataset
 from tqdm import tqdm
 
-from get_oscar_model import special_tokens_dict
 from utils_data import (
     check_and_load_preprocessed_data,
     load_datasets,
     load_detector_classes,
-    load_nav_graphs,
     save_preprocessed_data,
     truncate_dialogs,
 )

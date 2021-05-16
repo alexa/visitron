@@ -10,7 +10,6 @@ from collections import defaultdict
 import numpy as np
 import pandas as pd
 import torch
-import torch.distributed as dist
 from tensorboardX import SummaryWriter
 from torch.utils.data import RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
@@ -20,13 +19,12 @@ from data_loader import VLNDataLoader, VLNDataloader_collate_fn, VLNDataset
 from eval import Evaluation
 from get_oscar_model import MODEL_CLASS, load_oscar_model, special_tokens_dict
 from oscar.transformers_src.pytorch_transformers import (
-    AdamW, BertConfig, BertTokenizer, WarmupConstantSchedule,
-    WarmupLinearSchedule, modeling_bert)
+    BertConfig,
+    BertTokenizer,
+)
 from params import args
-from utils import Tokenizer, read_vocab, set_seed, setup_vocab
+from utils import set_seed
 from utils_data import load_detector_classes, read_tsv_img_features, timeSince
-
-# from utils_model import MODEL_CLASS, load_oscar_model
 
 
 logger = logging.getLogger(__name__)

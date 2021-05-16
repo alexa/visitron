@@ -22,20 +22,14 @@ from classifier.data_loader import (
     ClassifierDataset,
 )
 from eval import Evaluation
-from get_oscar_model import MODEL_CLASS, load_oscar_model, special_tokens_dict
+from get_oscar_model import MODEL_CLASS, special_tokens_dict
 from oscar.transformers_src.pytorch_transformers import (
-    AdamW,
     BertConfig,
     BertTokenizer,
-    WarmupConstantSchedule,
-    WarmupLinearSchedule,
-    modeling_bert,
 )
 from params import args
-from utils import Tokenizer, read_vocab, set_seed, setup_vocab
+from utils import set_seed
 from utils_data import load_detector_classes, read_tsv_img_features, timeSince
-
-# from utils_model import MODEL_CLASS, load_oscar_model
 
 
 logger = logging.getLogger(__name__)
@@ -45,7 +39,6 @@ TRAINVAL_VOCAB = "tasks/NDH/data/trainval_vocab.txt"
 
 
 def train(args, features):
-    # num_labels = OscarAgent.n_outputs()
 
     encoder_path = os.path.join(args.model_name_or_path, "encoder")
     decoder_path = os.path.join(args.model_name_or_path, "decoder")
@@ -176,7 +169,7 @@ def train(args, features):
         if args.local_rank in [-2, -1, 0]:
             data_log["train loss"].append(train_loss_avg)
             loss_str += "train loss: %.4f" % train_loss_avg
-            # logger.info(f"Avg Loss: {train_loss_avg}")
+
             tb_writer.add_scalar(
                 "classification/loss_train", train_loss_avg, global_step=iter_no
             )
@@ -208,7 +201,7 @@ def train(args, features):
                 os.path.join(output_dir, "encoder"), os.path.join(output_dir, "decoder")
             )
             torch.save(args, os.path.join(output_dir, "training_args.bin"))
-            # if not args.no_pretrained_model:
+
             tokenizer.save_pretrained(output_dir)
             logger.info(f"Saving model checkpoint {iter_no} to {output_dir}")
 
@@ -277,13 +270,6 @@ def val(args, features, list_iter_no):
             logger.info(
                 f"Added {num_added_toks} tokens {' '.join(special_tokens_dict.values())} to Tokenizer"
             )
-
-        # train_dataset = ClassifierDataset(
-        #     args=args,
-        #     splits=["train"],
-        #     tokenizer=tokenizer,
-        #     truncate_dialog=True,
-        # )
 
         val_seen_dataset = ClassifierDataset(
             args=args,
@@ -418,8 +404,6 @@ def test_submission(args, features, list_iter_no):
 
         config = BertConfig.from_pretrained(config_path)
 
-        # config.action_space = 36
-
         config.img_feature_dim = args.img_feature_dim
         config.hidden_dropout_prob = args.drop_out
         config.classifier = "linear"
@@ -477,8 +461,6 @@ def test_submission(args, features, list_iter_no):
             pin_memory=True,
             drop_last=False,
         )
-        # evaluation = Evaluation(["test"], path_type=args.path_type)
-        # val_data_loaders[split] = (val_data_loader, evaluation)
 
         agent = Agent(
             args=args,
@@ -529,8 +511,6 @@ def test_submission(args, features, list_iter_no):
         agent.test(use_dropout=False, feedback="argmax")
         agent.write_results()
         logger.info(f"Saving results to {agent.results_path}")
-        # score_summary, _ = evaluation.score(agent.results_path)
-        # logger.info(score_summary)
 
         end = time.time()
         logger.info(
@@ -541,10 +521,6 @@ def test_submission(args, features, list_iter_no):
             )
         )
 
-        # df = pd.DataFrame(data_log)
-        # df.set_index("iteration")
-        # df_path = os.path.join(args.output_dir, "results", f"{iter_no}-log.csv")
-        # df.to_csv(df_path)
     sys.exit()
 
 
@@ -616,21 +592,6 @@ def main():
     set_seed(args.seed, args.n_gpu)
 
     logger.info("Training/evaluation parameters %s", args)
-
-    # if args.agent == "oscar":
-    #     features, region_labels, candidate_features = load_img_pickle_features(
-    #         args.img_feat_dir, args.img_feature_file, args.candidate_feature_file
-    #     )
-
-    #     if args.eval_only:
-    #         assert (
-    #             len(args.eval_iters) != 0 and args.eval_iters != -1
-    #         ), "incorrect eval_iters provided!"
-    #         val(args, features, region_labels, candidate_features, args.eval_iters)
-    #     else:
-    #         train(args, features, region_labels, candidate_features)
-
-    # elif args.agent == "att-lstm":
 
     if args.debug:
         feature_path = None

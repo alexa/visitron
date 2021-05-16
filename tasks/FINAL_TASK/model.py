@@ -379,7 +379,6 @@ class AttnDecoderLSTM(nn.Module):
         self.drop = nn.Dropout(p=dropout_ratio)
         self.lstm = nn.LSTMCell(embedding_size + feature_size, hidden_size)
         self.feat_att_layer = SoftDotAttention(hidden_size, feature_size)
-        # self.attention_layer = SoftDotAttention(hidden_size, 2 * hidden_size)
         self.attention_layer = SoftDotAttention(hidden_size, hidden_size)
         self.candidate_att_layer = SoftDotAttention(hidden_size, feature_size)
 
@@ -451,12 +450,8 @@ class AttnDecoderLSTMwithClassifier(nn.Module):
         self.drop = nn.Dropout(p=dropout_ratio)
         self.lstm = nn.LSTMCell(embedding_size + feature_size, hidden_size)
         self.feat_att_layer = SoftDotAttention(hidden_size, feature_size)
-        # self.attention_layer = SoftDotAttention(hidden_size, 2 * hidden_size)
         self.attention_layer = SoftDotAttention(hidden_size, hidden_size)
 
-        # self.question_linear = nn.Sequential(
-        #     nn.Linear(hidden_size, 1),
-        # )
 
         self.question_linear = nn.Sequential(
             nn.Linear(hidden_size, int(hidden_size // 2)),
@@ -536,7 +531,6 @@ class SpeakerEncoder(nn.Module):
             bidirectional=bidirectional,
         )
         self.drop = nn.Dropout(p=dropout_ratio)
-        # self.drop3 = nn.Dropout(p=self.args.featdropout)
         self.attention_layer = SoftDotAttention(self.hidden_size, feature_size)
 
         self.post_lstm = nn.LSTM(
@@ -556,10 +550,6 @@ class SpeakerEncoder(nn.Module):
         :return: context with shape (batch_size, length, hidden_size)
         """
         x = action_embeds
-        # if not already_dropfeat:
-        #     x[..., : -self.args.angle_feat_size] = self.drop3(
-        #         x[..., : -self.args.angle_feat_size]
-        #     )  # Do not dropout the spatial features
 
         # LSTM on the action embed
         ctx, _ = self.lstm(x)
@@ -567,10 +557,6 @@ class SpeakerEncoder(nn.Module):
 
         # Att and Handle with the shape
         batch_size, max_length, _ = ctx.size()
-        # if not already_dropfeat:
-        #     feature[..., : -self.args.angle_feat_size] = self.drop3(
-        #         feature[..., : -self.args.angle_feat_size]
-        #     )  # Dropout the image feature
         x, _ = self.attention_layer(  # Attend to the feature map
             ctx.contiguous().view(
                 -1, self.hidden_size

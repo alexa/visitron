@@ -84,18 +84,6 @@ def get_data_root(dataset_type="NDH"):
     return data_root
 
 
-# def load_datasets(splits, dataset_type="NDH"):
-#     data = []
-
-#     data_root = get_data_root(dataset_type)
-
-#     for split in splits:
-#         assert split in ["train", "val_seen", "val_unseen", "test"]
-#         with open(data_root + "%s.json" % split) as f:
-#             data += json.load(f)
-#     return data
-
-
 def load_datasets(splits, dataset_type="NDH"):
     data = []
 
@@ -164,9 +152,9 @@ def load_classifier_data(splits):
                         "Timestep for oracle and navigator mismatch, correcting it. "
                         f"Timestep: {timestep} turn['nav_idx']: {turn['nav_idx']}"
                     )
-                    # print(item["dialog_history"])
+
                 assert turn["role"] == "oracle"
-                # assert timestep == turn["nav_idx"]
+
                 message = turn["message"]
                 dialog_history = dialog[timestep]
                 dialog_history.append(message)
@@ -340,95 +328,6 @@ def truncate_dialogs(sentences, amount, left=True):
         return truncated_sentences
 
 
-# def load_per_view_img_pickle_features(img_feat_dir, img_feature_file):
-#     t_s = time.time()
-
-#     img_feature_path = os.path.join(img_feat_dir, img_feature_file)
-
-#     logger.info(f"Loading Image Features from {img_feature_path}")
-
-#     with open(img_feature_path, "rb") as f:
-#         loaded_feature_data = pickle.load(f)
-
-#     image_w = loaded_feature_data[0]["image_w"]
-#     image_h = loaded_feature_data[0]["image_h"]
-#     vfov = loaded_feature_data[0]["vfov"]
-
-#     features = {"features": {}, "image_w": image_w, "image_h": image_h, "vfov": vfov}
-#     region_tokens = {}
-
-#     for item in loaded_feature_data:
-#         long_id = f"{item['scanId']}_{item['viewpointId']}_{item['featureViewIndex']}"
-
-#         features["features"][long_id] = item["features"]
-
-#         region_tokens[long_id] = item["region_tokens"]
-
-#     t_e = time.time()
-#     logger.info(
-#         "Loaded Image Features from {} in time: {:0.2f} mins".format(
-#             img_feature_path, (t_e - t_s) / 60.0
-#         )
-#     )
-
-#     return features, region_tokens
-
-
-# def load_img_pickle_features(img_feat_dir, img_feature_file, candidate_feature_file):
-#     t_s = time.time()
-
-#     img_feature_path = os.path.join(img_feat_dir, img_feature_file)
-
-#     logger.info(f"Loading Image Features from {img_feature_path}")
-
-#     with open(img_feature_path, "rb") as f:
-#         loaded_feature_data = pickle.load(f)
-
-#     image_w = loaded_feature_data[0]["image_w"]
-#     image_h = loaded_feature_data[0]["image_h"]
-#     vfov = loaded_feature_data[0]["vfov"]
-
-#     features = {"features": {}, "image_w": image_w, "image_h": image_h, "vfov": vfov}
-#     region_tokens = {}
-
-#     for item in loaded_feature_data:
-#         long_id = f"{item['scanId']}_{item['viewpointId']}"
-
-#         features["features"][long_id] = item["features"]
-
-#         region_tokens[long_id] = item["region_tokens"]
-
-#     t_e = time.time()
-#     logger.info(
-#         "Loaded Image Features from {} in time: {:0.2f} mins".format(
-#             img_feature_path, (t_e - t_s) / 60.0
-#         )
-#     )
-
-#     candidate_feature_path = os.path.join(img_feat_dir, candidate_feature_file)
-
-#     logger.info(f"Loading Candidate Image Features from {candidate_feature_path}")
-
-#     with open(candidate_feature_path, "rb") as f:
-#         candidate_feature_data = pickle.load(f)
-
-#     cand_features = {}
-
-#     for item in candidate_feature_data:
-#         long_id = f"{item['scanId']}_{item['viewpointId']}"
-
-#         cand_features[long_id] = item["features"]
-
-#     t_e = time.time()
-#     logger.info(
-#         "Loaded Candidate Image Features from {} in time: {:0.2f} mins".format(
-#             candidate_feature_path, (t_e - t_s) / 60.0
-#         )
-#     )
-
-#     return features, region_tokens, cand_features
-
-
 def read_tsv_img_features(path=None, feature_size=2048, blind=False):
     if path:
         logger.info("Loading image features from %s" % path)
@@ -546,14 +445,6 @@ class FeaturesReader:
                 self.viewpoints[scan_id] = set()
             self.viewpoints[scan_id].add(viewpoint_id)
 
-        # # initialize memory
-        # self._in_memory = in_memory
-        # if self._in_memory:
-        #     self.indices = set()
-        #     self.features = [None] * len(self.keys)
-        #     self.headings = [None] * len(self.keys)
-        #     self.elevations = [None] * len(self.keys)
-
     def load_features_from_pickle(self, path):
         t_s = time.time()
         img_feature_path = path + ".pickle"
@@ -627,7 +518,6 @@ def get_encoding_for_oscar(tokenizer, obs):
     MAX_SEQ_LENGTH = 512
     MAX_DIALOG_LEN = 512 - 4  # including [QUES]s and [ANS]s
     MAX_TARGET_LENGTH = 4 - 2  # [CLS], [TAR], [SEP] after QA and before Action
-    # # TODO: ^^ add them as args ^^
 
     # # TOTAL 768
     new_obs = []
