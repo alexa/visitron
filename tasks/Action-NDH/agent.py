@@ -19,7 +19,6 @@ from torch.autograd import Variable
 from torch.optim import Adam
 
 import model
-import utils
 
 
 class BaseAgent(object):
@@ -251,7 +250,6 @@ class Agent(BaseAgent):
         batch_size = self.dataloader.batch_size
 
         if len(batch) != batch_size:
-            # print("Batch length not equal to batch size, padding towards the end!")
             remaining_no = batch_size - len(batch)
             extra_batch = self._get_batch()
             new_batch = batch + extra_batch[: batch_size - len(batch)]
@@ -366,9 +364,7 @@ class Agent(BaseAgent):
                     or t + 1 == self.episode_len
                     or ended.all()
                 ):
-                    # if (t%trunc)==(trunc-1) or t+1 == self.args.timesteps or ended.all():
-                    # avg_loss = self.loss / 10.0
-                    # avg_loss = self.loss
+
                     if self.args.n_gpu > 1:
                         pass  # already reduced
                     elif self.args.local_rank not in [-2, -1]:

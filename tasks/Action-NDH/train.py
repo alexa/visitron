@@ -20,18 +20,14 @@ from data_loader import VLNDataLoader, VLNDataloader_collate_fn, VLNDataset
 from eval import Evaluation
 from get_oscar_model import MODEL_CLASS, load_oscar_model, special_tokens_dict
 from oscar.transformers_src.pytorch_transformers import (
-    AdamW,
     BertConfig,
     BertTokenizer,
-    WarmupConstantSchedule,
-    WarmupLinearSchedule,
-    modeling_bert,
 )
-from utils import Tokenizer, read_vocab, set_seed, setup_vocab
+from utils import set_seed
 from utils_data import load_detector_classes, read_tsv_img_features, timeSince
 
 sys.path.append("/root/mount/Matterport3DSimulator/tasks/")
-from FINAL_TASK.params import args
+from viewpoint_select.params import args
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +130,7 @@ def train(args, features):
         if args.local_rank in [-2, -1, 0]:
             data_log["train loss"].append(train_loss_avg)
             loss_str += "train loss: %.4f" % train_loss_avg
-            # logger.info(f"Avg Loss: {train_loss_avg}")
+
             tb_writer.add_scalar("loss/train", train_loss_avg, global_step=iter_no)
 
         if (
@@ -158,7 +154,7 @@ def train(args, features):
                 os.path.join(output_dir, "encoder"), os.path.join(output_dir, "decoder")
             )
             torch.save(args, os.path.join(output_dir, "training_args.bin"))
-            # if not args.no_pretrained_model:
+
             tokenizer.save_pretrained(output_dir)
             logger.info(f"Saving model checkpoint {iter_no} to {output_dir}")
 
@@ -192,8 +188,6 @@ def val(args, features, list_iter_no):
         config_path = os.path.join(tmp_root_folder, "config.json")
 
         config = BertConfig.from_pretrained(config_path)
-
-        # config.action_space = 36
 
         config.img_feature_dim = args.img_feature_dim
         config.hidden_dropout_prob = args.drop_out

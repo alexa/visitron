@@ -1,22 +1,16 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
-import base64
-import json
 import logging
 import math
-import random
-import sys
 
 import MatterSim
 import networkx as nx
 
-# import csv
 import numpy as np
 from torch.utils.data import DataLoader, Dataset
 
 import utils
-from get_oscar_model import special_tokens_dict
 from utils_data import load_datasets, load_nav_graphs, truncate_dialogs
 
 logger = logging.getLogger(__name__)
@@ -99,257 +93,6 @@ class EnvBatch:
 
         self.sim.makeAction(ix, heading, elevation)
 
-    # def makeSimpleActions(self, simple_indices):
-    #     """Take an action using a simple interface: 0-forward, 1-turn left, 2-turn right, 3-look up, 4-look down.
-    #     All viewpoint changes are 30 degrees. Forward, look up and look down may not succeed - check state.
-    #     WARNING - Very likely this simple interface restricts some edges in the graph. Parts of the
-    #     environment may not longer be navigable."""
-    #     actions = []
-    #     for i, index in enumerate(simple_indices):
-    #         if index == 0:
-    #             actions.append((1, 0, 0))
-    #         elif index == 1:
-    #             actions.append((0, -1, 0))
-    #         elif index == 2:
-    #             actions.append((0, 1, 0))
-    #         elif index == 3:
-    #             actions.append((0, 0, 1))
-    #         elif index == 4:
-    #             actions.append((0, 0, -1))
-    #         else:
-    #             sys.exit("Invalid simple action")
-    #     self.makeActions(actions)
-
-
-# class SingleBatchSimulator:
-#     def __init__(self, image_w, image_h, vfov):
-
-#         self.image_w = image_w
-#         self.image_h = image_h
-#         self.vfov = vfov
-#         self.batch_size = 1
-
-#         self.viewpoint_viewpointIdx = None
-#         self.actions = None
-
-#         self.sim = MatterSim.Simulator()
-#         self.sim.setRenderingEnabled(False)
-#         self.sim.setDiscretizedViewingAngles(True)
-#         self.sim.setBatchSize(self.batch_size)
-#         self.sim.setCameraResolution(self.image_w, self.image_h)
-#         self.sim.setCameraVFOV(math.radians(self.vfov))
-#         self.sim.initialize()
-
-#         splits = ["train", "val_seen", "val_unseen", "test"]
-#         self.scans = []
-#         for split in splits:
-#             with open("tasks/NDH/data/%s.json" % split) as f:
-#                 items = json.load(f)
-#                 new_scans = [item["scan"] for item in items]
-#                 self.scans.extend(new_scans)
-#         self.scans = set(self.scans)
-#         self.graphs = load_nav_graphs(self.scans)
-
-#     def shortest_path_action(self, state, nextViewpointId):
-#         if state.location.viewpointId == nextViewpointId:
-#             logger.info(f"Same viewpoint detected!")
-#             return (0, 0, 0)  # do nothing
-
-#         # Can we see the next viewpoint?
-#         for i, loc in enumerate(state.navigableLocations):
-#             if loc.viewpointId == nextViewpointId:
-#                 # Look directly at the viewpoint before moving
-#                 if loc.rel_heading > math.pi / 6.0:
-#                     return (0, 1, 0)  # Turn right
-#                 elif loc.rel_heading < -math.pi / 6.0:
-#                     return (0, -1, 0)  # Turn left
-#                 elif loc.rel_elevation > math.pi / 6.0 and state.viewIndex // 12 < 2:
-#                     return (0, 0, 1)  # Look up
-#                 elif loc.rel_elevation < -math.pi / 6.0 and state.viewIndex // 12 > 0:
-#                     return (0, 0, -1)  # Look down
-#                 else:
-#                     return (i, 0, 0)  # Move
-#         # Can't see it - first neutralize camera elevation
-#         if state.viewIndex // 12 == 0:
-#             return (0, 0, 1)  # Look up
-#         elif state.viewIndex // 12 == 2:
-#             return (0, 0, -1)  # Look down
-#         # Otherwise decide which way to turn
-#         pos = [state.location.x, state.location.y, state.location.z]
-#         target_rel = self.graphs[state.scanId].node[nextViewpointId]["position"] - pos
-#         target_heading = math.pi / 2.0 - math.atan2(
-#             target_rel[1], target_rel[0]
-#         )  # convert to rel to y axis
-#         if target_heading < 0:
-#             target_heading += 2.0 * math.pi
-#         if state.heading > target_heading and state.heading - target_heading < math.pi:
-#             return (0, -1, 0)  # Turn left
-#         if target_heading > state.heading and target_heading - state.heading > math.pi:
-#             return (0, -1, 0)  # Turn left
-#         return (0, 1, 0)  # Turn right
-
-#     def get_turn_actions(self, start_idx, end_idx):
-#         start_elevation = start_idx // 12
-#         end_elevation = end_idx // 12
-#         if start_elevation != end_elevation:
-#             delta_elevation = end_elevation - start_elevation
-#             if delta_elevation >= 1:
-#                 return (0, 0, 1)
-#             else:
-#                 return (0, 0, -1)
-#         start_heading = start_idx % 12
-#         end_heading = end_idx % 12
-
-#         delta_heading = start_heading - end_heading
-#         if delta_heading >= 6:
-#             return (0, 1, 0)
-#         elif delta_heading > 0:
-#             return (0, -1, 0)
-#         elif delta_heading > -6:
-#             return (0, 1, 0)
-#         elif delta_heading > -12:
-#             return (0, -1, 0)
-#         else:
-#             import pdb
-
-#             pdb.set_trace()
-#             raise ValueError
-
-#     def convert_actions_to_ints(self, actions):
-#         env_actions = [
-#             (0, -1, 0),  # left
-#             (0, 1, 0),  # right
-#             (0, 0, 1),  # up
-#             (0, 0, -1),  # down
-#             (1, 0, 0),  # forward
-#             (0, 0, 0),  # <end>
-#             (0, 0, 0),  # <start>
-#             (0, 0, 0),  # <ignore>
-#         ]
-#         converted_actions = []
-#         for action in actions:
-#             if action == (0, -1, 0):
-#                 new_action = 0
-#             elif action == (0, 1, 0):
-#                 new_action = 1
-#             elif action == (0, 0, 1):
-#                 new_action = 2
-#             elif action == (0, 0, -1):
-#                 new_action = 3
-#             elif action == (1, 0, 0):
-#                 new_action = 4
-#             elif action == (0, 0, 0):
-#                 print("end action detected!")
-#                 new_action = 5
-#             else:
-#                 raise ValueError
-#             converted_actions.append(new_action)
-#         return converted_actions
-
-#     def extract_actions_from_viewpoints(
-#         self, path, scanId, start_heading, start_elevation, end_heading, end_elevation
-#     ):
-#         assert path != []
-
-#         self.viewpoint_viewpointIdx = []
-#         self.actions = []
-
-#         start_viewpoint = path[0]
-#         end_viewpoint = path[-1]
-
-#         self.sim.newEpisode(
-#             [scanId], [start_viewpoint], [start_heading], [start_elevation]
-#         )
-
-#         state = self.sim.getState()[0]
-#         self.viewpoint_viewpointIdx.append(
-#             (state.location.viewpointId, state.viewIndex)
-#         )
-
-#         if end_heading is None and end_elevation is None:
-#             return self.actions, self.viewpoint_viewpointIdx
-
-#         if len(path) == 1:
-#             nextViewpointId = path[0]
-#         else:
-#             nextViewpointId = path[1]
-
-#         skip = False
-#         next_idx = 1
-#         while state.location.viewpointId != end_viewpoint:
-#             action = self.shortest_path_action(state, nextViewpointId)
-
-#             # print(action, viewpoint_id_idx[-1])
-#             self.sim.makeAction([action[0]], [action[1]], [action[2]])
-#             if action[0] >= 1:
-#                 next_idx += 1
-#                 action = (1, 0, 0)
-#             self.actions.append(action)
-
-#             state = self.sim.getState()[0]
-#             self.viewpoint_viewpointIdx.append(
-#                 (state.location.viewpointId, state.viewIndex)
-#             )
-
-#             if next_idx == len(path):
-#                 nextViewpointId = path[next_idx - 1]
-#             else:
-#                 nextViewpointId = path[next_idx]
-
-#             if len(self.actions) >= 1000:
-#                 skip = True
-#                 break
-
-#         if skip:
-#             print(f"Skipping instr_idx: {item['inst_idx']}. Infinite loop detected!")
-#             import pdb
-
-#             pdb.set_trace()
-
-#         assert state.location.viewpointId == end_viewpoint
-
-#         intermediate_viewIndex = state.viewIndex
-#         intermediate_heading = state.heading
-#         intermediate_elevation = state.elevation
-
-#         end_viewpoint = path[-1]
-#         self.sim.newEpisode([scanId], [end_viewpoint], [end_heading], [end_elevation])
-#         state = self.sim.getState()[0]
-#         end_viewpoint_idx = state.viewIndex
-
-#         if intermediate_viewIndex != end_viewpoint_idx:
-#             self.sim.newEpisode(
-#                 [scanId],
-#                 [end_viewpoint],
-#                 [intermediate_heading],
-#                 [intermediate_elevation],
-#             )
-
-#             count = 0
-
-#             while state.viewIndex != end_viewpoint_idx:
-#                 action = self.get_turn_actions(state.viewIndex, end_viewpoint_idx)
-#                 self.actions.append(action)
-#                 self.sim.makeAction([action[0]], [action[1]], [action[2]])
-#                 state = self.sim.getState()[0]
-#                 self.viewpoint_viewpointIdx.append(
-#                     (state.location.viewpointId, state.viewIndex)
-#                 )
-#                 count += 1
-
-#                 if count >= 10:
-#                     print("Infinite loop detected!")
-#                     import pdb
-
-#                     pdb.set_trace()
-
-#         assert self.viewpoint_viewpointIdx[-1][0] == path[-1]
-#         assert self.viewpoint_viewpointIdx[-1][1] == end_viewpoint_idx
-
-#         self.actions = self.convert_actions_to_ints(self.actions)
-
-#         return self.actions, self.viewpoint_viewpointIdx
-
 
 class VLNDataset(Dataset):
     def __init__(
@@ -390,7 +133,6 @@ class VLNDataset(Dataset):
         MAX_SEQ_LENGTH = 512
         MAX_DIALOG_LEN = 512 - 4  # including [QUES]s and [ANS]s
         MAX_TARGET_LENGTH = 4 - 2  # [CLS], [TAR], [SEP] after QA and before Action
-        # # TODO: ^^ add them as args ^^
 
         # # TOTAL 768
 
