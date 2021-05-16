@@ -27,7 +27,7 @@ case $1 in
     ;;
 esac
 
-file="tasks/FINAL_TASK/train.py"
+file="tasks/viewpoint_select/train.py"
 
 arguments="
 --img_feat_dir srv/img_features

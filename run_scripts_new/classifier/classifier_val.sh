@@ -26,7 +26,7 @@ case $1 in
     ;;
 esac
 
-file="tasks/FINAL_TASK/train_classifier.py"
+file="tasks/viewpoint_select/train_classifier.py"
 
 eval_iters=""
 for (( COUNTER=10; COUNTER<=50000; COUNTER+=100 )); do  # 10 to 40010 gap 500

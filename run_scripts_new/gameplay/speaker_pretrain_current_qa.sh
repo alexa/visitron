@@ -26,7 +26,7 @@ case $1 in
     ;;
 esac
 
-file="tasks/FINAL_TASK/train_gameplay.py"
+file="tasks/viewpoint_select/train_gameplay.py"
 
 arguments="
 --img_feat_dir srv/img_features
