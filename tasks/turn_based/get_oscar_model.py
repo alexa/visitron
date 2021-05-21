@@ -62,7 +62,6 @@ def load_oscar_model(
             f"Added {num_added_toks} tokens {' '.join(special_tokens_dict.values())} to Tokenizer"
         )
 
-    # config.img_feature_type # TODO: make sure this is not set to ""img_dis_code" or something. Check modeling_bert.py
     config.img_feature_dim = args.img_feature_dim
     config.hidden_dropout_prob = args.drop_out
     config.classifier = "linear"
@@ -97,7 +96,6 @@ def load_oscar_model(
             # token type for Target, Question, Answer, Region Label, Action Stream (1 already present, so +4)
             "token_type_embeddings": config.type_vocab_size + 4,
         }
-        # config.vocab_size = config.vocab_size + 3
         model.resize_embeddings(embedding_size_dict)
 
     return model, tokenizer, config

@@ -22,14 +22,16 @@ from classifier.data_loader import (
     ClassifierDataset,
 )
 from eval import Evaluation
+from params import args
+from utils import set_seed
+from utils_data import load_detector_classes, read_tsv_img_features, timeSince
+
+sys.path.insert(0, "/root/mount/Matterport3DSimulator/")
 from get_oscar_model import MODEL_CLASS, special_tokens_dict
 from oscar.transformers_src.pytorch_transformers import (
     BertConfig,
     BertTokenizer,
 )
-from params import args
-from utils import set_seed
-from utils_data import load_detector_classes, read_tsv_img_features, timeSince
 
 
 logger = logging.getLogger(__name__)

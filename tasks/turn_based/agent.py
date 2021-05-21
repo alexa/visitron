@@ -53,7 +53,6 @@ class BaseAgent(object):
         self.losses = []
         self.results = {}
         # We rely on env showing the entire batch before repeating anything
-        # print "Testing %s" % self.__class__.__name__
         looped = False
         with torch.no_grad():
             while True:

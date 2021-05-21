@@ -5,8 +5,6 @@ import argparse
 
 parser = argparse.ArgumentParser()
 
-## ## Required parameters
-
 ## Directories parameters
 parser.add_argument(
     "--img_feat_dir",
@@ -73,10 +71,16 @@ parser.add_argument(
     help="The maximum total input image sequence length.",
 )
 parser.add_argument(
-    "--angle_feat_size", default=4, type=int, help="Size of angle feature",
+    "--angle_feat_size",
+    default=4,
+    type=int,
+    help="Size of angle feature",
 )
 parser.add_argument(
-    "--ignoreid", default=-100, type=int, help="Ignore id",
+    "--ignoreid",
+    default=-100,
+    type=int,
+    help="Ignore id",
 )
 parser.add_argument(
     "--img_feature_dim", default=2054, type=int, help="The Image Feature Dimension."
@@ -95,10 +99,16 @@ parser.add_argument("--bidir", type=bool, default=False)
 parser.add_argument("--rnnDim", dest="rnn_dim", type=int, default=512)
 parser.add_argument("--aemb", type=int, default=64)
 parser.add_argument(
-    "--add_action_stream", default=False, action="store_true", help="Add action or not",
+    "--add_action_stream",
+    default=False,
+    action="store_true",
+    help="Add action or not",
 )
 parser.add_argument(
-    "--submit", default=False, action="store_true", help="Submit or not",
+    "--submit",
+    default=False,
+    action="store_true",
+    help="Submit or not",
 )
 
 ## Training setting parameters
@@ -128,13 +138,19 @@ parser.add_argument(
     help="Detach loss and compute gradients after X timesteps",
 )
 parser.add_argument(
-    "--pretrained_fixed", action="store_true", help="Only finetune the final layer",
+    "--pretrained_fixed",
+    action="store_true",
+    help="Only finetune the final layer",
 )
 parser.add_argument(
-    "--train_only", action="store_true", help="Only train the model, no eval",
+    "--train_only",
+    action="store_true",
+    help="Only train the model, no eval",
 )
 parser.add_argument(
-    "--eval_only", action="store_true", help="Only eval the model, no training",
+    "--eval_only",
+    action="store_true",
+    help="Only eval the model, no training",
 )
 parser.add_argument(
     "--eval_iters",
@@ -208,7 +224,10 @@ parser.add_argument(
     help="Log eval process while training every X updates steps.",
 )
 parser.add_argument(
-    "--save_steps", type=int, default=-1, help="Save checkpoint every X updates steps.",
+    "--save_steps",
+    type=int,
+    default=-1,
+    help="Save checkpoint every X updates steps.",
 )
 
 parser.add_argument(
@@ -223,7 +242,10 @@ parser.add_argument(
     help="number of data loading workers (default: 4)",
 )
 parser.add_argument(
-    "--local_rank", type=int, default=-1, help="For distributed training: local_rank",
+    "--local_rank",
+    type=int,
+    default=-1,
+    help="For distributed training: local_rank",
 )
 
 parser.add_argument(

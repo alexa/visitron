@@ -16,15 +16,18 @@ from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 
 from data_loader_pretrain import PretrainDataset
+from params import args
+from utils import set_seed
+from utils_data import FeaturesReader, timeSince
+
+sys.path.insert(0, "/root/mount/Matterport3DSimulator/")
+
 from get_oscar_model import load_oscar_model
 from oscar.transformers_src.pytorch_transformers import (
     AdamW,
     WarmupConstantSchedule,
     WarmupLinearSchedule,
 )
-from params import args
-from utils import set_seed
-from utils_data import FeaturesReader, timeSince
 
 logger = logging.getLogger(__name__)
 
