@@ -13,7 +13,7 @@ This library is licensed under the MIT-0 License. See the LICENSE file.
 
 This repo uses
 - Bottom-Up Attention repo. Create a folder called `/bottom-up` and copy the code from this repo (https://github.com/peteanderson80/bottom-up-attention/tree/ec7422aa6b672ff8c8a3594805cbe269cbf29723).
-- Transformers repo used for running Oscar model. Install it from here (https://github.com/huggingface/transformers/tree/067923d3267325f525f4e46f357360c191ba562e) to `/tasks/FINAL_TASK/oscar/transformers_src`.
+- Transformers repo used for running Oscar model. Install it from here (https://github.com/huggingface/transformers/tree/067923d3267325f525f4e46f357360c191ba562e) to `/tasks/viewpoint_select/oscar/transformers_src`.
 
 ### R4R Data Setup
 
@@ -31,3 +31,17 @@ where `MODE` can be from [`cpu`, `single-gpu`, `multi-gpu-dp`, `multi-gpu-ddp`].
 - Use `single-gpu` to train on a single GPU.
 - Use `multi-gpu-dp` to train on all available GPUs using DataParallel.
 - Use `multi-gpu-ddp` to train on 4 GPUs using DistributedDataParallel. Change `--nproc_per_node` in the script to specify no. of GPUs in DistributedDataParallel mode.
+
+
+
+todos:
+- reference connectivity folder
+- bottom up
+- img_features
+- generate r4r
+- remove run scripts
+- scripts
+    - features
+    - pretraining data
+
+- clean up scripts folder
