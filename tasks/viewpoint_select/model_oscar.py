@@ -177,12 +177,7 @@ class BertImgModelwithLocationEmbeds(BertPreTrainedModel):
 
         self.img_embedding = nn.Linear(self.img_dim, self.config.hidden_size, bias=True)
         self.location_embeds = nn.Linear(128, self.config.hidden_size, bias=True)
-        # fmt: off
-        # self.action_embedding = nn.Sequential(
-        #     nn.Linear(4, self.config.hidden_size),  # TODO: add angle_feat_size to config
-        #     nn.Tanh()
-        # )
-        # fmt: on
+
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         if self.use_img_layernorm:
             self.LayerNorm = BertLayerNorm(
@@ -372,9 +367,7 @@ class PreTrainOscar(BertPreTrainedModel):
             img_feats=img_feats,
             img_location_embeddings=img_location_embeddings,
         )
-        # import pdb
 
-        # pdb.set_trace()
         if text_only:
             return outputs
 

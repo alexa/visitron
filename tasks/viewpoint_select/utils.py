@@ -16,7 +16,6 @@ import torch
 import torch.distributions as D
 import torch.nn.functional as F
 
-import utils
 from utils_data import load_datasets
 
 logger = logging.getLogger(__name__)
@@ -240,7 +239,6 @@ class Tokenizer(object):
                     sentence.append(word)
                 except:
                     pass
-                    # print("Missing index %d" % ix )
         return " ".join(sentence[::-1])  # unreverse before output
 
     def shrink(self, inst):
@@ -263,7 +261,6 @@ class Tokenizer(object):
 
 
 def dialog_to_string(dialog):
-    # dia_inst = ""
     sentences = []
     seps = []
     for turn in dialog:

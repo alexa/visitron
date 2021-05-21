@@ -34,7 +34,6 @@ TRAINVAL_VOCAB = "tasks/NDH/data/trainval_vocab.txt"
 
 
 def train(args, features):
-    # num_labels = OscarAgent.n_outputs()
     model, tokenizer, config = load_oscar_model(
         args,
         "PreTrainOscar",
@@ -132,7 +131,7 @@ def train(args, features):
         if args.local_rank in [-2, -1, 0]:
             data_log["train loss"].append(train_loss_avg)
             loss_str += "train loss: %.4f" % train_loss_avg
-            # logger.info(f"Avg Loss: {train_loss_avg}")
+
             tb_writer.add_scalar("loss/train", train_loss_avg, global_step=iter_no)
 
         if (
@@ -156,7 +155,7 @@ def train(args, features):
                 os.path.join(output_dir, "encoder"), os.path.join(output_dir, "decoder")
             )
             torch.save(args, os.path.join(output_dir, "training_args.bin"))
-            # if not args.no_pretrained_model:
+
             tokenizer.save_pretrained(output_dir)
             logger.info(f"Saving model checkpoint {iter_no} to {output_dir}")
 
@@ -190,8 +189,6 @@ def val(args, features, list_iter_no):
         config_path = os.path.join(tmp_root_folder, "config.json")
 
         config = BertConfig.from_pretrained(config_path)
-
-        # config.action_space = 36
 
         config.img_feature_dim = args.img_feature_dim
         config.hidden_dropout_prob = args.drop_out
@@ -379,8 +376,6 @@ def test_submission(args, features, list_iter_no):
 
         config = BertConfig.from_pretrained(config_path)
 
-        # config.action_space = 36
-
         config.img_feature_dim = args.img_feature_dim
         config.hidden_dropout_prob = args.drop_out
         config.classifier = "linear"
@@ -438,8 +433,6 @@ def test_submission(args, features, list_iter_no):
             pin_memory=True,
             drop_last=False,
         )
-        # evaluation = Evaluation(["test"], path_type=args.path_type)
-        # val_data_loaders[split] = (val_data_loader, evaluation)
 
         agent = Agent(
             args=args,
@@ -490,8 +483,6 @@ def test_submission(args, features, list_iter_no):
         agent.test(use_dropout=False, feedback="argmax")
         agent.write_results()
         logger.info(f"Saving results to {agent.results_path}")
-        # score_summary, _ = evaluation.score(agent.results_path)
-        # logger.info(score_summary)
 
         end = time.time()
         logger.info(
@@ -502,10 +493,6 @@ def test_submission(args, features, list_iter_no):
             )
         )
 
-        # df = pd.DataFrame(data_log)
-        # df.set_index("iteration")
-        # df_path = os.path.join(args.output_dir, "results", f"{iter_no}-log.csv")
-        # df.to_csv(df_path)
     sys.exit()
 
 
@@ -576,21 +563,6 @@ def main():
     set_seed(args.seed, args.n_gpu)
 
     logger.info("Training/evaluation parameters %s", args)
-
-    # if args.agent == "oscar":
-    #     features, region_labels, candidate_features = load_img_pickle_features(
-    #         args.img_feat_dir, args.img_feature_file, args.candidate_feature_file
-    #     )
-
-    #     if args.eval_only:
-    #         assert (
-    #             len(args.eval_iters) != 0 and args.eval_iters != -1
-    #         ), "incorrect eval_iters provided!"
-    #         val(args, features, region_labels, candidate_features, args.eval_iters)
-    #     else:
-    #         train(args, features, region_labels, candidate_features)
-
-    # elif args.agent == "att-lstm":
 
     features = read_tsv_img_features(
         path=os.path.join(args.img_feat_dir, args.img_feature_file),

@@ -80,7 +80,6 @@ class EncoderLSTM(nn.Module):
         ctx, lengths = pad_packed_sequence(enc_h, batch_first=True)
         ctx = self.drop(ctx)
         return ctx, decoder_init, c_t  # (batch, seq_len, hidden_size*num_directions)
-        # (batch, hidden_size)
 
 
 class EncoderLSTMOscar(nn.Module):

@@ -6,8 +6,6 @@ import os
 
 parser = argparse.ArgumentParser()
 
-## ## Required parameters
-
 ## Directories parameters
 parser.add_argument(
     "--img_feat_dir",
@@ -365,66 +363,3 @@ parser.add_argument(
     type=str,
     help="SLURM info to print",
 )
-
-
-############### RMM params #####################
-
-parser.add_argument(
-    "--train_vocab", type=str, default="srv/task_data/CVDN/data/train_vocab.txt"
-)
-parser.add_argument(
-    "--trainval_vocab", type=str, default="srv/task_data/CVDN/data/trainval_vocab.txt"
-)
-
-parser.add_argument(
-    "--speaker_only",
-    action="store_true",
-    default=False,
-    help="",
-)
-
-parser.add_argument(
-    "--history",
-    type=str,
-    default="all",
-    help="none, target, oracle_ans, nav_q_oracle_ans, or all",
-)
-
-parser.add_argument(
-    "--steps_to_next_q",
-    type=int,
-    default=4,
-    help="How many steps the follower takes before asking a question",
-)
-
-parser.add_argument(
-    "--agent_feedback_method",
-    type=str,
-    default="sample",
-    help="teacher, argmax, sample, topk, nucleus, temperature, penalty, nucleus_with_penalty",
-)
-
-# Speaker settings
-parser.add_argument(
-    "--speaker_feedback_method",
-    type=str,
-    default="sample",
-    help="teacher, argmax, sample, topk, nucleus, temperature, penalty, nucleus_with_penalty",
-)
-
-parser.add_argument("--speaker_rl", action="store_true", required=False)
-
-parser.add_argument(
-    "--saved_speaker_model_file",
-    default=None,
-    type=str,
-    required=False,
-    help="Path to pre-trained model or shortcut name",
-)
-
-
-args = parser.parse_args()
-
-# TODO:
-args.speaker_results_dir = os.path.join(args.output_dir, "checkpoints", "speaker")
-args.agent_results_dir = os.path.join(args.output_dir, "checkpoints", "agent")

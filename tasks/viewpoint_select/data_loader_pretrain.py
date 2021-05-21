@@ -90,7 +90,6 @@ class PretrainDataset(Dataset):
         MAX_REGION_LABELS_LENGTH = 180 - 1
         MAX_DIALOG_LEN = 512 - 180 - 4  # including [QUES]s and [ANS]s
         MAX_TARGET_LENGTH = 4 - 2  # [CLS], [TAR], [SEP] after QA and before Action
-        # # TODO: ^^ add them as args ^^
 
         if self.args.masked_token_prediction:
             self.detector_classes = load_detector_classes()
@@ -246,8 +245,6 @@ class PretrainDataset(Dataset):
                     miniters=1000,
                     desc="loading PretrainR2R",
                 ):
-
-                    # for j, instr in enumerate(item["instructions"]):
 
                     new_item = dict(item)
                     new_item["inst_idx"] = f"{item['inst_idx']}"
@@ -565,7 +562,6 @@ class PretrainDataset(Dataset):
             torch.tensor(special_tokens_mask, dtype=torch.bool), value=0.0
         )
 
-        # masked_indices = torch.bernoulli(torch.full(labels.shape, args.mlm_probability)).type(torch.ByteTensor)
         masked_indices = torch.bernoulli(probability_matrix).type(torch.bool)
 
         if self.args.masked_token_prediction:
@@ -583,7 +579,6 @@ class PretrainDataset(Dataset):
             labels[token_classes_mask] = -1
 
         # 80% of the time, we replace masked input tokens with tokenizer.mask_token ([MASK])
-
         indices_replaced = (
             torch.bernoulli(torch.full(labels.shape, 0.8)).type(torch.bool)
             & masked_indices
@@ -601,8 +596,6 @@ class PretrainDataset(Dataset):
             )
 
         # 10% of the time, we replace masked input tokens with random word
-
-        # indices_random = torch.bernoulli(torch.full(labels.shape, 0.5)).bool() & masked_indices & ~indices_replaced
         indices_random = (
             torch.bernoulli(torch.full(labels.shape, 0.5)).type(torch.bool)
             & masked_indices
@@ -631,7 +624,6 @@ class PretrainDataset(Dataset):
             img_features.append(feature)
             view_indices.extend([idx] * feature.shape[0])
         img_features = np.concatenate(img_features, axis=0)
-        # img_features = img_features[-MAX_IMG_FEATURES_LENGTH:]
 
         location_embeddings = []
         for idx in view_indices:
@@ -673,11 +665,9 @@ class PretrainDataset(Dataset):
             ]
             if self.args.max_img_seq_length > 0:
                 attention_mask = attention_mask + [1] * img_features.shape[0]
-                # segment_ids += [sequence_b_segment_id] * img_feat.shape[0]
         else:
             if self.args.max_img_seq_length > 0:
                 attention_mask = attention_mask + [1] * img_features.shape[0]
-                # segment_ids = segment_ids + [sequence_b_segment_id] * img_feat.shape[0]
             padding_matrix = torch.zeros(
                 (
                     self.args.max_img_seq_length - img_features.shape[0],

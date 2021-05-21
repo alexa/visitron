@@ -51,7 +51,6 @@ class BaseAgent(object):
         self.losses = []
         self.results = {}
         # We rely on env showing the entire batch before repeating anything
-        # print "Testing %s" % self.__class__.__name__
         looped = False
         with torch.no_grad():
             while True:
@@ -156,21 +155,21 @@ class Agent(BaseAgent):
         sequence length (to enable PyTorch packing)."""
 
         seq_tensor = np.array([ob["target_dialog_tokens_id"] for ob in obs])
-        # if not self.args.no_pretrained_model:
+
         segment_ids = np.array([ob["target_dialog_segment_ids"] for ob in obs])
 
         seq_lengths = np.argmax(seq_tensor == self.pad_token_id, axis=1)
         seq_lengths[seq_lengths == 0] = seq_tensor.shape[1]  # Full length
 
         seq_tensor = torch.from_numpy(seq_tensor)
-        # if not self.args.no_pretrained_model:
+
         segment_ids = torch.from_numpy(segment_ids)
         seq_lengths = torch.from_numpy(seq_lengths)
 
         # Sort sequences by lengths
         seq_lengths, perm_idx = seq_lengths.sort(0, True)  # True -> descending
         sorted_tensor = seq_tensor[perm_idx]
-        # if not self.args.no_pretrained_model:
+
         sorted_segment_ids = segment_ids[perm_idx]
         mask = (sorted_tensor == self.pad_token_id)[
             :, : seq_lengths[0]
@@ -270,7 +269,6 @@ class Agent(BaseAgent):
         batch_size = self.dataloader.batch_size
 
         if len(batch) != batch_size:
-            # print("Batch length not equal to batch size, padding towards the end!")
             remaining_no = batch_size - len(batch)
             extra_batch = self._get_batch()
             new_batch = batch + extra_batch[: batch_size - len(batch)]
@@ -346,18 +344,11 @@ class Agent(BaseAgent):
 
         batch_size = len(obs)
 
-        # Reorder the language input for the encoder (do not ruin the original code)
-        # if self.args.no_pretrained_model:
-        #     seq, _, seq_mask, seq_lengths, perm_idx = self._sort_batch(batch)
-        # else:
         seq, segment_ids, seq_mask, seq_lengths, perm_idx = self._sort_batch(batch)
 
         seq_lengths = torch.tensor(seq_lengths)
         perm_obs = obs[perm_idx]
 
-        # if self.args.no_pretrained_model:
-        #     ctx, h_t, c_t = self.encoder(seq, seq_lengths)
-        # else:
         ctx, h_t, c_t = self.encoder(
             inputs=seq,
             lengths=seq_lengths,
@@ -461,9 +452,6 @@ class Agent(BaseAgent):
                     or t + 1 == self.episode_len
                     or ended.all()
                 ):
-                    # if (t%trunc)==(trunc-1) or t+1 == self.args.timesteps or ended.all():
-                    # avg_loss = self.loss / 10.0
-                    # avg_loss = self.loss
                     if self.args.n_gpu > 1:
                         pass  # already reduced
                     elif self.args.local_rank != -1:
@@ -576,5 +564,3 @@ class Agent(BaseAgent):
 
         self.encoder.load_state_dict(new_encoder_weights)
         self.decoder.load_state_dict(new_decoder_weights)
-        # self.decoder.load_state_dict(decoder_weights)
-        # self.encoder.load_state_dict(encoder_weights)
