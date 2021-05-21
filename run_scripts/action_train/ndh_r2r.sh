@@ -26,7 +26,7 @@ case $1 in
     ;;
 esac
 
-file="tasks/Action-NDH/train.py"
+file="tasks/turn_based/train.py"
 
 arguments="
 --img_feat_dir srv/img_features
