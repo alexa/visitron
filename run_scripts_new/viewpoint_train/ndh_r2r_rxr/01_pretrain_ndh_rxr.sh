@@ -1,4 +1,3 @@
-dfsd
 cpu="python"
 single_gpu="python"
 multi_gpu_data_parallel="python"
