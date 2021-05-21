@@ -363,3 +363,6 @@ parser.add_argument(
     type=str,
     help="SLURM info to print",
 )
+
+
+args = parser.parse_args()
