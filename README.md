@@ -4,6 +4,7 @@ Contains code to train VISITRON, an [Oscar](https://github.com/microsoft/Oscar)-
 for NDH/[CVDN](https://github.com/mmurray/cvdn) task.
 Work in progress.
 
+
 ## License
 
 This library is licensed under the MIT-0 License. See the LICENSE file.
@@ -35,13 +36,31 @@ where `MODE` can be from [`cpu`, `single-gpu`, `multi-gpu-dp`, `multi-gpu-ddp`].
 
 
 todos:
-- reference connectivity folder
-- bottom up
+
+- README
+
 - img_features
+- bottom up
+
 - generate r4r
-- remove run scripts
+
 - scripts
     - features
     - pretraining data
 
-- clean up scripts folder
+
+
+--img_feat_dir srv/img_features
+--img_feature_file ResNet-152-imagenet.tsv
+--data_dir srv/task_data/NDH/data
+--model_name_or_path srv/oscar_pretrained_models/base-vg-labels/ep_107_1192087
+--output_dir srv_2/results/viewpoint-2/temp
+
+exp_name=srv/results/viewpoint_select/ndh-no_pretraining
+
+
+features used:
+ResNet-152-imagenet.tsv
+ResNet-101-faster-rcnn-genome-worientation
+
+
