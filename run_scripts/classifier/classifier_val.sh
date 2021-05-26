@@ -33,7 +33,7 @@ for (( COUNTER=10; COUNTER<=50000; COUNTER+=100 )); do  # 10 to 40010 gap 500
     eval_iters="$eval_iters $COUNTER"
 done
 
-exp_name=srv_2/results/classifier/teacher_force-frozen-try3_2layers_weight5-multi-gpu-ddp
+exp_name=srv/results/classifier/teacher_force-frozen-2layers_weight5-multi-gpu-ddp
 
 arguments="
 --img_feat_dir srv/img_features

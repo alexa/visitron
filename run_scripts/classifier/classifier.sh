@@ -32,8 +32,8 @@ arguments="
 --img_feat_dir srv/img_features
 --img_feature_file ResNet-152-imagenet.tsv
 --data_dir srv/task_data/NDH/data
---model_name_or_path srv_2/results/viewpoint-2/ndh_rxr-pretrain_ndh_r2r/checkpoints/checkpoint-3710
---output_dir srv_2/results/classifier/teacher_force-frozen-try3_2layers_weight5-$1
+--model_name_or_path srv/results/viewpoint_select/ndh_rxr-pretrain_ndh_r2r/checkpoints/checkpoint-3710
+--output_dir srv/results/classifier/teacher_force-frozen-2layers_weight5-$1
 --only_finetune_classifier
 --question_asking_class_weight 5
 --max_seq_length 768
