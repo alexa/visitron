@@ -10,7 +10,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from transformers_src.pytorch_transformers.modeling_bert import (
+from transformers.pytorch_transformers.modeling_bert import (
     BertAttention,
     BertEncoder,
     BertIntermediate,
