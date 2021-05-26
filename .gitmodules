@@ -1,0 +1,3 @@
+[submodule "oscar/transformers"]
+	path = oscar/transformers
+	url = https://github.com/huggingface/transformers.git
