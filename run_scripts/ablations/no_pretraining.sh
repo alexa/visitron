@@ -34,7 +34,7 @@ arguments="
 --data_dir srv/task_data/NDH/data
 --model_name_or_path srv/oscar_pretrained_models/base-vg-labels/ep_107_1192087
 --no_pretrained_model
---output_dir srv_2/results/viewpoint-2/temp
+--output_dir srv/results/viewpoint_select/ndh-no_pretraining
 --feedback_method sample
 --path_type planner_path
 --max_seq_length 768

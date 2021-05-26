@@ -33,7 +33,7 @@ arguments="
 --img_feature_file ResNet-101-faster-rcnn-genome-worientation
 --data_dir srv/task_data/NDH/data
 --model_name_or_path srv/oscar_pretrained_models/base-vg-labels/ep_107_1192087
---output_dir srv_2/results/pretrain/pretrain_all_ndh_r2r-$1
+--output_dir srv/results/pretrain/pretrain-all-ndh_r2r-$1
 --add_ndh_data
 --add_r2r_data
 --masked_token_prediction

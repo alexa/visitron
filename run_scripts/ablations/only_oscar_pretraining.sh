@@ -33,7 +33,7 @@ arguments="
 --img_feature_file ResNet-152-imagenet.tsv
 --data_dir srv/task_data/NDH/data
 --model_name_or_path srv/oscar_pretrained_models/base-vg-labels/ep_107_1192087
---output_dir srv_2/results/viewpoint-2/ndh-only_oscar_pretraining
+--output_dir srv/results/viewpoint_select/ndh-only_oscar_pretraining
 --feedback_method sample
 --path_type planner_path
 --max_seq_length 768
