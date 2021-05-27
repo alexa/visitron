@@ -1,4 +1,91 @@
-## VISITRON: Visual Semantics-aligned Interactively Trained Object-Navigator
+# VISITRON: Visual Semantics-aligned Interactively Trained Object-Navigator
+
+[VISITRON: Visual Semantics-aligned Interactively Trained Object-Navigator](https://arxiv.org/abs/2105.11589)
+
+Ayush Shrivastava, Karthik Gopalakrishnan, Yang Liu, Robinson Piramuthu, Gokhan Tür, Devi Parikh, Dilek Hakkani-Tür
+
+NAACL 2021, Visually Grounded Interaction and Language (ViGIL) Workshop
+
+![VISITRON](visitron.png)
+
+Citation:
+```
+@inproceedings{visitron,
+  title={VISITRON: Visual Semantics-aligned Interactively Trained Object-Navigator},
+  author={Ayush Shrivastava, Karthik Gopalakrishnan, Yang Liu, Robinson Piramuthu, Gokhan Tür, Devi Parikh, Dilek Hakkani-T\"{u}r},
+  booktitle={NAACL 2021, Visually Grounded Interaction and Language (ViGIL) Workshop},
+  year={2021}
+}
+```
+
+## Setup
+Clone the repo using:
+```
+git clone --recursive https://github.com/alexa/visitron.git
+```
+
+### Matterport3D dataset and simulator
+This codebase uses the Matterport3D Simulator. Detailed instructions on how to setup the simulator and how to preprocess the Matterport3D data for faster simulator performance are present here: [Matterport3DSimulator_README](https://github.com/mmurray/cvdn/blob/master/README_Matterport3DSimulator.md). We provide the docker setup for ease of setup for the simulator.
+
+We assume that the Matterport3D is present at `$MATTERPORT_DATA_DIR` which can be set using:
+```
+export MATTERPORT_DATA_DIR=<PATH_TO_MATTERPORT_DATASET>
+```
+
+### Docker setup
+
+Build the docker image:
+```
+docker build -t mattersim:visitron .
+```
+
+To run the docker container, mounting the codebase and the Matterport3D dataset, use:
+```
+nvidia-docker run -it --ipc=host --cpuset-cpus="$(taskset -c -p $$ | cut -f2 -d ':' | awk '{$1=$1};1')" --volume `pwd`:/root/mount/Matterport3DSimulator --mount type=bind,source=$MATTERPORT_DATA_DIR,target=/root/mount/Matterport3DSimulator/data/v1/scans,readonly mattersim:visitron
+```
+
+### Task data setup
+Our approach is pretrained on NDH and R2R, and then finetuned on NDH and RxR. Download these task data as follows.
+
+#### NDH, R2R data :
+
+```
+mkdir -p srv/task_data
+bash scripts/download_ndh_r2r_data.sh
+```
+
+#### RxR data :
+
+Refer to [RxR repo](https://github.com/google-research-datasets/RxR#dataset-download) for its setup and copy the data to `srv/task_data/RxR/data` folder.
+
+### Image features
+
+### Oscar setup
+
+
+
+-
+ - use docker setup
+ -
+
+# Setup
+
+## Setup
+
+### Setup
+
+#### Setup
+
+##### Setup
+
+
+sdfds
+
+
+
+
+
+
 
 Contains code to train VISITRON, an [Oscar](https://github.com/microsoft/Oscar)-based agent
 for NDH/[CVDN](https://github.com/mmurray/cvdn) task.
