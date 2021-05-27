@@ -4,7 +4,7 @@
 
 Ayush Shrivastava, Karthik Gopalakrishnan, Yang Liu, Robinson Piramuthu, Gokhan Tür, Devi Parikh, Dilek Hakkani-Tür
 
-NAACL 2021, Visually Grounded Interaction and Language (ViGIL) Workshop
+Accepted to NAACL 2021, Visually Grounded Interaction and Language (ViGIL) Workshop
 
 ![VISITRON](visitron.png)
 
@@ -45,7 +45,7 @@ nvidia-docker run -it --ipc=host --cpuset-cpus="$(taskset -c -p $$ | cut -f2 -d 
 ```
 
 ### Task data setup
-Our approach is pretrained on NDH and R2R, and then finetuned on NDH and RxR. Download these task data as follows.
+VISITRON is pretrained on [NDH](https://github.com/mmurray/cvdn) and [R2R](https://github.com/peteanderson80/Matterport3DSimulator/tree/master/tasks/R2R), and then finetuned on NDH and [RxR](https://github.com/google-research-datasets/RxR). Download these task data as follows.
 
 #### NDH, R2R data :
 
@@ -58,38 +58,20 @@ bash scripts/download_ndh_r2r_data.sh
 
 Refer to [RxR repo](https://github.com/google-research-datasets/RxR#dataset-download) for its setup and copy the data to `srv/task_data/RxR/data` folder.
 
+
+### Pretraining data
+
+TODO
+
 ### Image features
 
+Download ResNet features from [here](https://www.dropbox.com/s/o57kxh2mn5rkx4o/ResNet-152-imagenet.zip?dl=1).
+
+TODO: ResNet-101-faster-rcnn-genome-worientation features
+
 ### Oscar setup
-
-
-
--
- - use docker setup
- -
-
-# Setup
-
-## Setup
-
-### Setup
-
-#### Setup
-
-##### Setup
-
-
-sdfds
-
-
-
-
-
-
-
-Contains code to train VISITRON, an [Oscar](https://github.com/microsoft/Oscar)-based agent
-for NDH/[CVDN](https://github.com/mmurray/cvdn) task.
-Work in progress.
+We use [Oscar](https://github.com/microsoft/Oscar) model as the backbone for our VISITRON model. Copy the Oscar pretrained weights from here.
+TODO
 
 
 ## License
@@ -102,10 +84,6 @@ This library is licensed under the MIT-0 License. See the LICENSE file.
 This repo uses
 - Bottom-Up Attention repo. Create a folder called `/bottom-up` and copy the code from this repo (https://github.com/peteanderson80/bottom-up-attention/tree/ec7422aa6b672ff8c8a3594805cbe269cbf29723).
 - Transformers repo used for running Oscar model. Install it from here (https://github.com/huggingface/transformers/tree/067923d3267325f525f4e46f357360c191ba562e) to `/tasks/viewpoint_select/oscar/transformers_src`.
-
-### R4R Data Setup
-
-Create a folder `/generate_r4r` and copy [r4r_generate_data.py](https://github.com/google-research/google-research/blob/master/r4r/r4r_generate_data.py) and [graph_utils.py](https://github.com/google-research/google-research/blob/master/r4r/graph_utils.py) to it. Refer to [this repo](https://github.com/google-research/google-research/tree/master/r4r) for other details about R4R.
 
 
 ## How to run scripts in `run_scripts_new`
@@ -128,8 +106,6 @@ todos:
 
 - img_features
 - bottom up
-
-- generate r4r
 
 - scripts
     - features
