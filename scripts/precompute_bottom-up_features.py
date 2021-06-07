@@ -60,8 +60,8 @@ TSV_FILENAMES = [
     "viewElevation",
 ]
 
-DRY_RUN = True
-# DRY_RUN = False
+# DRY_RUN = True
+DRY_RUN = False
 
 parser = argparse.ArgumentParser()
 
@@ -87,9 +87,9 @@ CFG_FILE = caffe_root + "/experiments/cfgs/faster_rcnn_end2end_resnet.yml"
 UPDOWN_DATA = caffe_root + "/data/genome/1600-400-20"
 
 GRAPHS = "connectivity/"
-OUTFILE = "img_features/new-intermediate-features/ResNet-101-faster-rcnn-genome.tsv.%d"
-MERGED = "img_features/new-ResNet-101-faster-rcnn-genome.tsv"
-MERGED_PICKLE = "img_features/temp-ResNet-101-faster-rcnn-genome.pickle"
+OUTFILE = "img_features/ResNet-101-faster-rcnn-genome.tsv.%d"
+MERGED = "img_features/ResNet-101-faster-rcnn-genome.tsv"
+MERGED_PICKLE = "img_features/ResNet-101-faster-rcnn-genome.pickle"
 
 WIDTH = 600
 HEIGHT = 600
@@ -472,38 +472,14 @@ def read_tsv(infile):
                     base64.b64decode(item["featureHeading"]), dtype=np.float32
                 )
 
-                # temp = item["featureElevation"]
-                # missing_padding = len(temp) % 4
-                # if missing_padding:
-                #     temp += b"=" * (4 - missing_padding)
-                #     print(
-                #         "featureElevation padding missing: %s_%s"
-                #         % (item["scanId"], item["viewpointId"])
-                #     )
                 item["featureElevation"] = np.frombuffer(
                     base64.b64decode(item["featureElevation"]), dtype=np.float32
                 )
 
-                # temp = item["cls_prob"]
-                # missing_padding = len(temp) % 4
-                # if missing_padding:
-                #     temp += b"=" * (4 - missing_padding)
-                #     print(
-                #         "cls_prob padding missing: %s_%s"
-                #         % (item["scanId"], item["viewpointId"])
-                #     )
                 item["cls_prob"] = np.frombuffer(
                     base64.b64decode(item["cls_prob"]), dtype=np.float32
                 ).reshape((-1, 1601))
 
-                # temp = item["attr_prob"]
-                # missing_padding = len(temp) % 4
-                # if missing_padding:
-                #     temp += b"=" * (4 - missing_padding)
-                #     print(
-                #         "attr_prob padding missing: %s_%s"
-                #         % (item["scanId"], item["viewpointId"])
-                #     )
                 item["attr_prob"] = np.frombuffer(
                     base64.b64decode(item["attr_prob"]), dtype=np.float32
                 ).reshape((-1, 401))
@@ -521,21 +497,20 @@ def read_tsv(infile):
 
 if __name__ == "__main__":
 
-    # gpu_ids = range(NUM_GPUS)
-    # p = Pool(NUM_GPUS)
-    # p.map(build_tsv, gpu_ids)
-    # merge_tsvs()
+    if args.gpu_id == -1:
+        gpu_ids = range(NUM_GPUS)
+        p = Pool(NUM_GPUS)
+        p.map(build_tsv, gpu_ids)
+        merge_tsvs()
+    else:
+        build_tsv(gpu_id=args.gpu_id)
+        print("Run merge_tsvs() after running build_tsv for all gpu_ids")
+        # Uncomment next line to merge all tsvs
+        # merge_tsvs()
 
-    build_tsv(gpu_id=args.gpu_id)
+    data = read_tsv(MERGED)
+    with open(MERGED_PICKLE, "wb") as handle:
+        pickle.dump(data, handle)
 
-    # start = time.time()
-    # merge_tsvs()
-    # now = time.time()
-    # print("Time taken for merging the tsv file: %0.4f mins" % ((now - start) / 60))
-
-    # data = read_tsv(MERGED)
-    # with open(MERGED_PICKLE, "wb") as handle:
-    #     pickle.dump(data, handle)
-
-    # with open(MERGED_PICKLE, "rb") as handle:
-    #     data = pickle.load(handle)
+    with open(MERGED_PICKLE, "rb") as handle:
+        data = pickle.load(handle)

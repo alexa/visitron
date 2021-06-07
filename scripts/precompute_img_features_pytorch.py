@@ -1,33 +1,30 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
-import numpy as np
-import cv2
-import json
-import math
+import argparse
 import base64
 import csv
-import sys
+import json
+import math
 import os
 import random
+import sys
 from multiprocessing import Pool
 
-import argparse
-
-from PIL import Image
-
+import cv2
+import MatterSim
+import numpy as np
 import torch
-import torchvision
 import torch.nn as nn
+import torchvision
 import torchvision.models
 import torchvision.transforms.functional as F
-
-import MatterSim
+from PIL import Image
 
 from timer import Timer
 
-sys.path.insert(0, "/root/mount/Matterport3DSimulator/models/")
-import bit_pytorch.models as bit_models
+# sys.path.insert(0, "/root/mount/Matterport3DSimulator/models/")
+# import bit_pytorch.models as bit_models
 
 csv.field_size_limit(sys.maxsize)
 
@@ -75,7 +72,7 @@ FEATURE_SIZES = {
     "BiT-S-R152x4": 8192,
 }
 
-NUM_GPUS = args.num_gpus
+NUM_GPUS = 12
 MODEL_NAME = args.model
 FEATURE_SIZE = FEATURE_SIZES[MODEL_NAME]
 BATCH_SIZE = (
@@ -135,7 +132,7 @@ def load_model(model_name):
         return bit
 
 
-def load_viewpointids(gpu_id=0):
+def load_viewpointids(job_id=0):
     viewpointIds = []
     with open(GRAPHS + "scans.txt") as f:
         scans = [scan.strip() for scan in f.readlines()]
@@ -148,8 +145,8 @@ def load_viewpointids(gpu_id=0):
     random.seed(SEED)
     random.shuffle(viewpointIds)
     if NUM_GPUS != 1:
-        viewpointIds = viewpointIds[gpu_id::NUM_GPUS]
-    print("%d: Loaded %d viewpoints" % (gpu_id, len(viewpointIds)))
+        viewpointIds = viewpointIds[job_id::NUM_GPUS]
+    print("%d: Loaded %d viewpoints" % (job_id, len(viewpointIds)))
     return viewpointIds
 
 
@@ -176,8 +173,11 @@ def transform_img_bit(im):
     return F.normalize(im, mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
 
 
-def build_tsv(gpu_id=0):
-    print("%d: build_tsv" % gpu_id)
+def build_tsv(ids):
+    job_id = ids[0]
+    gpu_id = ids[1]
+
+    print("JOB ID %d GPU ID %d: build_tsv" % (job_id, gpu_id))
 
     # Set up the simulator
     sim = MatterSim.Simulator()
@@ -201,13 +201,13 @@ def build_tsv(gpu_id=0):
         if NUM_GPUS == 1:
             output_file = OUTFILE
         else:
-            output_file = OUTFILE % gpu_id
+            output_file = OUTFILE % job_id
 
         with open(output_file, "wt") as tsvfile:
             writer = csv.DictWriter(tsvfile, delimiter="\t", fieldnames=TSV_FIELDNAMES)
 
             # Loop all the viewpoints in the simulator
-            viewpointIds = load_viewpointids(gpu_id)
+            viewpointIds = load_viewpointids(job_id)
 
             for scanId, viewpointId in viewpointIds:
                 t_render.tic()
@@ -325,10 +325,11 @@ if __name__ == "__main__":
         data = read_tsv(OUTFILE)
         print("Completed %d viewpoints" % len(data))
     else:
-        gpu_ids = range(NUM_GPUS)
-        p = Pool(NUM_GPUS)
-        p.map(build_tsv, gpu_ids)
+        # JOB, GPU
+
+        ids = [[0, 0], [1, 1], [2, 2], [3, 3]]
+        p = Pool(4)
+        p.map(build_tsv, ids)
         merge_tsvs()
-    data = read_tsv(MERGED)
-    print("Completed %d viewpoints" % len(data))
-                                                                                       
+        data = read_tsv(MERGED)
+        print("Completed %d viewpoints" % len(data))

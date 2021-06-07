@@ -78,7 +78,19 @@ By default, this script starts 8 multiprocessing threads to speed up its executi
 
 ### Image features
 
+Our pretraining approach requires object-level features from Faster RCNN concatenated with orientation features.
 
+First, follow the setup from the [bottom-up repo](https://github.com/peteanderson80/bottom-up-attention) inside a docker container to install caffe. Note that the code from bottom-up repo requires python2.
+
+Then, extract object-level features using
+```
+python2 scripts/precompute_bottom-up_features.py
+```
+You can use `--gpu_id` to parallelize the feature extraction process ovewr multiple GPUs.
+
+Then, to concatenate orientation features to object-level features, use
+```
+python
 
 Download ResNet features from [here](https://www.dropbox.com/s/o57kxh2mn5rkx4o/ResNet-152-imagenet.zip?dl=1).
 

@@ -86,21 +86,15 @@ def load_tsv_features_and_change_data_types(feature_store):
                     axis=1,
                 )
 
-                # item["features"] = np.concatenate(
-                #     [item["features"], orientation_feature], axis=1
-                # )
+                item["features"] = np.concatenate(
+                    [item["features"], orientation_feature], axis=1
+                )
 
                 item["region_tokens"] = eval(item["region_tokens"])
 
-                # item["viewHeading"] = float(item["viewHeading"])
-                item["viewHeading"] = np.frombuffer(
-                    base64.b64decode(item["viewHeading"]), dtype=np.float32
-                )
+                item["viewHeading"] = float(item["viewHeading"])
 
-                # item["viewElevation"] = float(item["viewElevation"])
-                item["viewElevation"] = np.frombuffer(
-                    base64.b64decode(item["viewElevation"]), dtype=np.float32
-                )
+                item["viewElevation"] = float(item["viewElevation"])
 
                 item["featureHeading"] = np.frombuffer(
                     base64.b64decode(item["featureHeading"]), dtype=np.float32
@@ -120,20 +114,17 @@ def load_tsv_features_and_change_data_types(feature_store):
                     item["scanId"]
                     + "_"
                     + item["viewpointId"]
-                    # + "_"
-                    # + item["featureViewIndex"]
+                    + "_"
+                    + item["featureViewIndex"]
                 )
 
-                # features[long_id] = item["features"]
                 new_data.append(item)
 
-        # feature_size = next(iter(features.values())).shape[-1]
-        # logger("The feature size is %d" % feature_size)
     else:
         logger("Image features not provided")
 
     return new_data
-    # , features
+
 
 
 def load_pickle_features_and_add_orientation(feature_store):
@@ -175,41 +166,38 @@ def load_pickle_features_and_add_orientation(feature_store):
 
 
 ROOT = "srv/img_features"
-# FILE = "ResNet-101-faster-rcnn-genome"
-# FILE = "ResNet-101-faster-rcnn-genome-pano"
-FILE = "ResNet-101-faster-rcnn-genome-candidate"
+FILE = "ResNet-101-faster-rcnn-genome"
 
+start = time.time()
+new_data = load_tsv_features_and_change_data_types(f"{ROOT}/{FILE}.tsv")
+now = time.time()
+print("Time taken for loading tsv file: %0.4f mins" % ((now - start) / 60))
 
-# start = time.time()
-# new_data = load_tsv_features_and_change_data_types(f"{ROOT}/{FILE}.tsv")
-# now = time.time()
-# print("Time taken for loading tsv file: %0.4f mins" % ((now - start) / 60))
+start = time.time()
+with open(
+    f"{ROOT}/{FILE}.pickle",
+    "wb",
+) as f:
+    pickle.dump(new_data, f)
+now = time.time()
+print("Time taken for saving pickle file: %0.4f mins" % ((now - start) / 60))
 
-# start = time.time()
-# with open(
-#     f"{ROOT}/{FILE}.pickle",
-#     "wb",
-# ) as f:
-#     pickle.dump(new_data, f)
-# now = time.time()
-# print("Time taken for saving pickle file: %0.4f mins" % ((now - start) / 60))
+start = time.time()
+new_data = load_pickle_features_and_add_orientation(f"{ROOT}/{FILE}.pickle")
+now = time.time()
+print(
+    "Time taken for loading and adding orientation to pickle file: %0.4f mins"
+    % ((now - start) / 60)
+)
 
-# start = time.time()
-# new_data = load_pickle_features_and_add_orientation(f"{ROOT}/{FILE}.pickle")
-# now = time.time()
-# print(
-#     "Time taken for loading and adding orientation to pickle file: %0.4f mins"
-#     % ((now - start) / 60)
-# )
-
-# start = time.time()
-# with open(
-#     f"{ROOT}/{FILE}-worientation.pickle",
-#     "wb",
-# ) as f:
-#     pickle.dump(new_data, f)
-# now = time.time()
-# print("Time taken for saving pickle file: %0.4f mins" % ((now - start) / 60))
+start = time.time()
+with open(
+    f"{ROOT}/{FILE}-worientation.pickle",
+    "wb",
+) as f:
+    pickle.dump(new_data, f)
+now = time.time()
+print("Time taken for saving pickle file: %0.4f mins" % ((now - start) / 60))
 
 
 ##### Faster pickling ########
