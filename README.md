@@ -12,7 +12,7 @@ Citation:
 ```
 @inproceedings{visitron,
   title={VISITRON: Visual Semantics-aligned Interactively Trained Object-Navigator},
-  author={Ayush Shrivastava, Karthik Gopalakrishnan, Yang Liu, Robinson Piramuthu, Gokhan Tür, Devi Parikh, Dilek Hakkani-T\"{u}r},
+  author={Ayush Shrivastava, Karthik Gopalakrishnan, Yang Liu, Robinson Piramuthu, Gokhan T\"{u}r, Devi Parikh, Dilek Hakkani-T\"{u}r},
   booktitle={NAACL 2021, Visually Grounded Interaction and Language (ViGIL) Workshop},
   year={2021}
 }
@@ -25,7 +25,7 @@ git clone --recursive https://github.com/alexa/visitron.git
 ```
 
 ### Matterport3D dataset and simulator
-This codebase uses the Matterport3D Simulator. Detailed instructions on how to setup the simulator and how to preprocess the Matterport3D data for faster simulator performance are present here: [Matterport3DSimulator_README](https://github.com/mmurray/cvdn/blob/master/README_Matterport3DSimulator.md). We provide the docker setup for ease of setup for the simulator.
+This codebase uses the [Matterport3D Simulator](https://github.com/peteanderson80/Matterport3DSimulator). Detailed instructions on how to setup the simulator and how to preprocess the Matterport3D data for faster simulator performance are present here: [Matterport3DSimulator_README](https://github.com/mmurray/cvdn/blob/master/README_Matterport3DSimulator.md). We provide the docker setup for ease of setup for the simulator.
 
 We assume that the Matterport3D is present at `$MATTERPORT_DATA_DIR` which can be set using:
 ```
@@ -39,7 +39,7 @@ Build the docker image:
 docker build -t mattersim:visitron .
 ```
 
-To run the docker container, mounting the codebase and the Matterport3D dataset, use:
+To run the docker container and mount the codebase and the Matterport3D dataset, use:
 ```
 nvidia-docker run -it --ipc=host --cpuset-cpus="$(taskset -c -p $$ | cut -f2 -d ':' | awk '{$1=$1};1')" --volume `pwd`:/root/mount/Matterport3DSimulator --mount type=bind,source=$MATTERPORT_DATA_DIR,target=/root/mount/Matterport3DSimulator/data/v1/scans,readonly mattersim:visitron
 ```
@@ -61,9 +61,24 @@ Refer to [RxR repo](https://github.com/google-research-datasets/RxR#dataset-down
 
 ### Pretraining data
 
-TODO
+Inside the docker container, run these commands to generate pretraining data.
+
+For NDH, run
+```
+python scripts/generate_pretraining_data.py --dataset_to_use NDH --split train
+```
+For R2R, run
+```
+python scripts/generate_pretraining_data.py --dataset_to_use NDH --split train
+```
+The data gets saved to `srv/task_data/pretrain_data`.
+By default, this script starts 8 multiprocessing threads to speed up its execution. `--start_job_index`, `--end_job_index` and `--global_total_jobs` can be changed to change the number of threads.
+
+
 
 ### Image features
+
+
 
 Download ResNet features from [here](https://www.dropbox.com/s/o57kxh2mn5rkx4o/ResNet-152-imagenet.zip?dl=1).
 
