@@ -93,8 +93,13 @@ python scripts/precompute_resnet_img_features.py
 
 
 ### Oscar setup
-We use [Oscar](https://github.com/microsoft/Oscar) model as the backbone for our VISITRON model. Copy the Oscar pretrained weights from here.
-TODO
+We use [Oscar](https://github.com/microsoft/Oscar) model as the backbone for our VISITRON model. Copy the Oscar pretrained weights using
+```
+wget https://biglmdiag.blob.core.windows.net/oscar/pretrained_models/$MODEL_NAME.zip
+unzip $MODEL_NAME.zip -d srv/oscar_pretrained_models/
+```
+where `MODEL_NAME` is `base-vg-labels` and `base-no-labels`.
+
 
 
 ## Training
@@ -125,13 +130,6 @@ This library is licensed under the MIT-0 License. See the LICENSE file.
 ```
 
 
-## Setup
-
-This repo uses
-- Bottom-Up Attention repo. Create a folder called `/bottom-up` and copy the code from this repo (https://github.com/peteanderson80/bottom-up-attention/tree/ec7422aa6b672ff8c8a3594805cbe269cbf29723).
-- Transformers repo used for running Oscar model. Install it from here (https://github.com/huggingface/transformers/tree/067923d3267325f525f4e46f357360c191ba562e) to `/tasks/viewpoint_select/oscar/transformers_src`.
-
-
 
 
 
@@ -146,9 +144,5 @@ This repo uses
 
 exp_name=srv/results/viewpoint_select/ndh-no_pretraining
 
-
-features used:
-ResNet-152-imagenet.tsv
-ResNet-101-faster-rcnn-genome-worientation
 
 
