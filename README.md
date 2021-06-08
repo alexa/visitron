@@ -84,7 +84,8 @@ Then, to concatenate orientation features to object-level features, use
 python scripts/add_orientation_to_features.py
 ```
 
-Here are the extracted object-level features in pickle form. We stored the features in lmdb format for fast loading. #TODO:
+Here are the extracted object-level features in pickle format. We stored the features in lmdb format for fast loading.
+#TODO: Add extracted features here.
 
 During finetuning, we use scene-level ResNet features. Download [ResNet features](https://github.com/peteanderson80/Matterport3DSimulator#precomputing-resnet-image-features) from [this link](https://www.dropbox.com/s/o57kxh2mn5rkx4o/ResNet-152-imagenet.zip?dl=1). You can also extract using
 ```
@@ -98,21 +99,54 @@ We use [Oscar](https://github.com/microsoft/Oscar) model as the backbone for our
 wget https://biglmdiag.blob.core.windows.net/oscar/pretrained_models/$MODEL_NAME.zip
 unzip $MODEL_NAME.zip -d srv/oscar_pretrained_models/
 ```
-where `MODEL_NAME` is `base-vg-labels` and `base-no-labels`.
+where `$MODEL_NAME` is `base-vg-labels` and `base-no-labels`.
 
 
 
 ## Training
 
-Use
+We provide pretraining, training and evaluation scripts in `run_scripts/`.
+
+As an example, use the following command to run a script.
+
 ```
-bash run_scripts_new/viewpoint_train/ndh/01_pretrain_ndh.sh MODE
+bash run_scripts/viewpoint_train/pretrain_ndh_r2r.sh $MODE
 ```
-where `MODE` can be from [`cpu`, `single-gpu`, `multi-gpu-dp`, `multi-gpu-ddp`].
+where `$MODE` can be from [`cpu`, `single-gpu`, `multi-gpu-dp`, `multi-gpu-ddp`].
 - Use `cpu` to train on CPU.
 - Use `single-gpu` to train on a single GPU.
 - Use `multi-gpu-dp` to train on all available GPUs using DataParallel.
 - Use `multi-gpu-ddp` to train on 4 GPUs using DistributedDataParallel. Change `--nproc_per_node` in the script to specify no. of GPUs in DistributedDataParallel mode.
+
+Pretraining scripts are in `pretrain`, training scripts which use viewpoint selection as action space are in `viewpoint_train`, turn based action space scripts are in `turn_based_train` and scripts for training and evaluating question-asking classifier are in `classifier`. `ablations` are the training scripts for Table 1 from the paper.
+
+To pretrain our model on NDH and R2R, and finetune on NDH and RxR for viewpoint selection action space, run
+
+1. Pretrain on NDH+R2R for all objectives:
+```
+bash run_scripts/pretrain/pretrain_ndh_r2r.sh multi-gpu-ddp
+```
+
+2. Pick the best pretrained checkpoint by evaluating using
+```
+bash run_scripts/pretrain/pretrain_ndh_r2r_val.sh multi-gpu-ddp
+```
+
+Change `--model_name_or_path` in `run_scripts/viewpoint_train/pretrain_ndh_r2r.sh` to load the best pretrained checkpoint.
+
+3. Finetune on NDH + RxR using
+```
+bash run_scripts/viewpoint_train/pretrain_ndh_r2r.sh multi-gpu-ddp
+```
+
+4. Evaluate trained models using
+```
+bash run_scripts/viewpoint_train/pretrain_ndh_r2r_val.sh multi-gpu-ddp
+```
+
+You can then, run the scripts in `run_scripts/classifier` to train the question-asking classifier.
+
+For any run script, make sure these arguments refer to correct paths, `img_feat_dir`, `img_feature_file`, `data_dir`, `model_name_or_path`, `output_dir`.
 
 
 ## License
@@ -128,21 +162,6 @@ This library is licensed under the MIT-0 License. See the LICENSE file.
   year={2021}
 }
 ```
-
-
-
-
-
-
-
-
---img_feat_dir srv/img_features
---img_feature_file ResNet-152-imagenet.tsv
---data_dir srv/task_data/NDH/data
---model_name_or_path srv/oscar_pretrained_models/base-vg-labels/ep_107_1192087
---output_dir srv_2/results/viewpoint-2/temp
-
-exp_name=srv/results/viewpoint_select/ndh-no_pretraining
 
 
 
