@@ -59,37 +59,6 @@ def load_tsv_features_and_change_data_types(feature_store):
                     base64.b64decode(item["features"]), dtype=np.float32
                 ).reshape((-1, 2048))
 
-                top_left_x = item["boxes"][:, 0]
-                top_left_y = item["boxes"][:, 1]
-                bottom_right_x = item["boxes"][:, 2]
-                bottom_right_y = item["boxes"][:, 3]
-
-                region_width = bottom_right_x - top_left_x + 1
-                region_height = bottom_right_y - top_left_y + 1
-
-                norm_top_left_x = top_left_x / item["image_w"]
-                norm_top_left_y = top_left_y / item["image_h"]
-                norm_bottom_right_x = bottom_right_x / item["image_w"]
-                norm_bottom_right_y = bottom_right_y / item["image_h"]
-                norm_region_width = region_width / item["image_w"]
-                norm_region_height = region_height / item["image_h"]
-
-                orientation_feature = np.concatenate(
-                    [
-                        norm_top_left_x[:, np.newaxis],
-                        norm_top_left_y[:, np.newaxis],
-                        norm_bottom_right_x[:, np.newaxis],
-                        norm_bottom_right_y[:, np.newaxis],
-                        norm_region_width[:, np.newaxis],
-                        norm_region_height[:, np.newaxis],
-                    ],
-                    axis=1,
-                )
-
-                item["features"] = np.concatenate(
-                    [item["features"], orientation_feature], axis=1
-                )
-
                 item["region_tokens"] = eval(item["region_tokens"])
 
                 item["viewHeading"] = float(item["viewHeading"])
@@ -124,7 +93,6 @@ def load_tsv_features_and_change_data_types(feature_store):
         logger("Image features not provided")
 
     return new_data
-
 
 
 def load_pickle_features_and_add_orientation(feature_store):
@@ -195,99 +163,13 @@ with open(
     f"{ROOT}/{FILE}-worientation.pickle",
     "wb",
 ) as f:
-    pickle.dump(new_data, f)
+    pickle.dump(new_data, f, protocol=-1)
 now = time.time()
 print("Time taken for saving pickle file: %0.4f mins" % ((now - start) / 60))
 
 
-##### Faster pickling ########
 start = time.time()
 with open(f"{ROOT}/{FILE}-worientation.pickle", "rb") as handle:
     data = pickle.load(handle)
 now = time.time()
 print("Time taken for loading pickle file: %0.4f mins" % ((now - start) / 60))
-
-
-start = time.time()
-with open(
-    f"{ROOT}/{FILE}-worientation-faster.pickle",
-    "wb",
-) as f:
-    pickle.dump(data, f, protocol=-1)
-now = time.time()
-print("Time taken for saving pickle file: %0.4f mins" % ((now - start) / 60))
-
-start = time.time()
-with open(f"{ROOT}/{FILE}-worientation-faster.pickle", "rb") as handle:
-    data = pickle.load(handle)
-now = time.time()
-print("Time taken for loading pickle file: %0.4f mins" % ((now - start) / 60))
-        pickle.dump(region_labels, handle)
-
-
-ROOT = "srv/img_features"
-FILE = "ResNet-101-faster-rcnn-genome"
-# FILE = "ResNet-101-faster-rcnn-genome-pano"
-# FILE = "ResNet-101-faster-rcnn-genome-candidate"
-
-
-# start = time.time()
-# new_data = load_tsv_features_and_change_data_types(f"{ROOT}/{FILE}.tsv")
-# now = time.time()
-# print("Time taken for loading tsv file: %0.4f mins" % ((now - start) / 60))
-
-# start = time.time()
-# with open(
-#     f"{ROOT}/{FILE}.pickle",
-#     "wb",
-# ) as f:
-#     pickle.dump(new_data, f)
-# now = time.time()
-# print("Time taken for saving pickle file: %0.4f mins" % ((now - start) / 60))
-
-# start = time.time()
-# new_data = load_pickle_features_and_add_orientation(f"{ROOT}/{FILE}.pickle")
-# now = time.time()
-# print(
-#     "Time taken for loading and adding orientation to pickle file: %0.4f mins"
-#     % ((now - start) / 60)
-# )
-
-# start = time.time()
-# with open(
-#     f"{ROOT}/{FILE}-worientation.pickle",
-#     "wb",
-# ) as f:
-#     pickle.dump(new_data, f)
-# now = time.time()
-# print("Time taken for saving pickle file: %0.4f mins" % ((now - start) / 60))
-
-
-##### Faster pickling ########
-# start = time.time()
-# with open(f"{ROOT}/{FILE}-worientation.pickle", "rb") as handle:
-#     data = pickle.load(handle)
-# now = time.time()
-# print("Time taken for loading pickle file: %0.4f mins" % ((now - start) / 60))
-
-
-# start = time.time()
-# with open(
-#     f"{ROOT}/{FILE}-worientation-faster.pickle",
-#     "wb",
-# ) as f:
-#     pickle.dump(data, f, protocol=-1)
-# now = time.time()
-# print("Time taken for saving pickle file: %0.4f mins" % ((now - start) / 60))
-
-start = time.time()
-with open(f"{ROOT}/{FILE}-worientation-faster.pickle", "rb") as handle:
-    data = pickle.load(handle)
-now = time.time()
-print("Time taken for loading pickle file: %0.4f mins" % ((now - start) / 60))
-
-save_region_labels_separately(data)
-
-# save_as_lmbd(data, f"{ROOT}/{FILE}-worientation.lmdb")
-
-# data = PanoFeaturesReader(f"{ROOT}/{FILE}-worientation.lmdb")

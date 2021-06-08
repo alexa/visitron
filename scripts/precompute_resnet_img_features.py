@@ -30,7 +30,6 @@ csv.field_size_limit(sys.maxsize)
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument("--num-gpus", type=int, default=1, help="")
 parser.add_argument(
     "--model",
     type=str,
@@ -50,7 +49,7 @@ parser.add_argument(
         "BiT-S-R152x4",
     ],
 )
-parser.add_argument("--img-features-dir", type=str, default="img_features")
+parser.add_argument("--img-features-dir", type=str, default="srv/img_features")
 parser.add_argument("--models-dir", type=str, default="models/")
 parser.add_argument("--output-feature-file", type=str, default="")
 parser.add_argument("--seed", type=int, default=1, help="")
@@ -72,7 +71,7 @@ FEATURE_SIZES = {
     "BiT-S-R152x4": 8192,
 }
 
-NUM_GPUS = 12
+NUM_GPUS = 1
 MODEL_NAME = args.model
 FEATURE_SIZE = FEATURE_SIZES[MODEL_NAME]
 BATCH_SIZE = (

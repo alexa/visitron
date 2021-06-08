@@ -514,3 +514,4 @@ if __name__ == "__main__":
 
     with open(MERGED_PICKLE, "rb") as handle:
         data = pickle.load(handle)
+    print("Pickle file loaded!")
