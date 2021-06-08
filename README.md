@@ -8,15 +8,6 @@ Accepted to NAACL 2021, Visually Grounded Interaction and Language (ViGIL) Works
 
 ![VISITRON](visitron.png)
 
-Citation:
-```
-@inproceedings{visitron,
-  title={VISITRON: Visual Semantics-aligned Interactively Trained Object-Navigator},
-  author={Ayush Shrivastava, Karthik Gopalakrishnan, Yang Liu, Robinson Piramuthu, Gokhan T\"{u}r, Devi Parikh, Dilek Hakkani-T\"{u}r},
-  booktitle={NAACL 2021, Visually Grounded Interaction and Language (ViGIL) Workshop},
-  year={2021}
-}
-```
 
 ## Setup
 Clone the repo using:
@@ -80,7 +71,7 @@ By default, this script starts 8 multiprocessing threads to speed up its executi
 
 Our pretraining approach requires object-level features from Faster RCNN concatenated with orientation features.
 
-First, follow the setup from the [bottom-up repo](https://github.com/peteanderson80/bottom-up-attention) inside a docker container to install caffe. Note that the code from bottom-up repo requires python2.
+First, follow the setup from the [bottom-up attention repo](https://github.com/peteanderson80/bottom-up-attention) inside a docker container to install Caffe. Note that the code from bottom-up attention repo requires python2.
 
 Then, extract object-level features using
 ```
@@ -90,11 +81,16 @@ You can use `--gpu_id` to parallelize the feature extraction process ovewr multi
 
 Then, to concatenate orientation features to object-level features, use
 ```
-python
+python scripts/add_orientation_to_features.py
+```
 
-Download ResNet features from [here](https://www.dropbox.com/s/o57kxh2mn5rkx4o/ResNet-152-imagenet.zip?dl=1).
+Here are the extracted object-level features in pickle form. We stored the features in lmdb format for fast loading. #TODO:
 
-TODO: ResNet-101-faster-rcnn-genome-worientation features
+During finetuning, we use scene-level ResNet features. Download [ResNet features](https://github.com/peteanderson80/Matterport3DSimulator#precomputing-resnet-image-features) from [this link](https://www.dropbox.com/s/o57kxh2mn5rkx4o/ResNet-152-imagenet.zip?dl=1). You can also extract using
+```
+python scripts/precompute_resnet_img_features.py
+```
+
 
 ### Oscar setup
 We use [Oscar](https://github.com/microsoft/Oscar) model as the backbone for our VISITRON model. Copy the Oscar pretrained weights from here.
@@ -118,7 +114,15 @@ where `MODE` can be from [`cpu`, `single-gpu`, `multi-gpu-dp`, `multi-gpu-ddp`].
 
 This library is licensed under the MIT-0 License. See the LICENSE file.
 
-
+## Citation:
+```
+@inproceedings{visitron,
+  title={VISITRON: Visual Semantics-aligned Interactively Trained Object-Navigator},
+  author={Ayush Shrivastava, Karthik Gopalakrishnan, Yang Liu, Robinson Piramuthu, Gokhan T\"{u}r, Devi Parikh, Dilek Hakkani-T\"{u}r},
+  booktitle={NAACL 2021, Visually Grounded Interaction and Language (ViGIL) Workshop},
+  year={2021}
+}
+```
 
 
 ## Setup
@@ -131,15 +135,6 @@ This repo uses
 
 
 
-
-todos:
-
-- README
-
-- img_features
-
-- scripts
-    - features
 
 
 
