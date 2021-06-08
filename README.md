@@ -101,19 +101,7 @@ We use [Oscar](https://github.com/microsoft/Oscar) model as the backbone for our
 TODO
 
 
-## License
-
-This library is licensed under the MIT-0 License. See the LICENSE file.
-
-
-## Setup
-
-This repo uses
-- Bottom-Up Attention repo. Create a folder called `/bottom-up` and copy the code from this repo (https://github.com/peteanderson80/bottom-up-attention/tree/ec7422aa6b672ff8c8a3594805cbe269cbf29723).
-- Transformers repo used for running Oscar model. Install it from here (https://github.com/huggingface/transformers/tree/067923d3267325f525f4e46f357360c191ba562e) to `/tasks/viewpoint_select/oscar/transformers_src`.
-
-
-## How to run scripts in `run_scripts_new`
+## Training
 
 Use
 ```
@@ -126,17 +114,32 @@ where `MODE` can be from [`cpu`, `single-gpu`, `multi-gpu-dp`, `multi-gpu-ddp`].
 - Use `multi-gpu-ddp` to train on 4 GPUs using DistributedDataParallel. Change `--nproc_per_node` in the script to specify no. of GPUs in DistributedDataParallel mode.
 
 
+## License
+
+This library is licensed under the MIT-0 License. See the LICENSE file.
+
+
+
+
+## Setup
+
+This repo uses
+- Bottom-Up Attention repo. Create a folder called `/bottom-up` and copy the code from this repo (https://github.com/peteanderson80/bottom-up-attention/tree/ec7422aa6b672ff8c8a3594805cbe269cbf29723).
+- Transformers repo used for running Oscar model. Install it from here (https://github.com/huggingface/transformers/tree/067923d3267325f525f4e46f357360c191ba562e) to `/tasks/viewpoint_select/oscar/transformers_src`.
+
+
+
+
+
 
 todos:
 
 - README
 
 - img_features
-- bottom up
 
 - scripts
     - features
-    - pretraining data
 
 
 
