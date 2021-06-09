@@ -22,7 +22,7 @@ from utils_data import FeaturesReader, timeSince
 
 sys.path.insert(0, "/root/mount/Matterport3DSimulator/")
 
-from get_oscar_model import load_oscar_model
+from oscar_model import load_oscar_weights
 from oscar.transformers.pytorch_transformers import (
     AdamW,
     WarmupConstantSchedule,
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 def train(args, features_reader):
 
-    model, tokenizer, config = load_oscar_model(
+    model, tokenizer, config = load_oscar_weights(
         args,
         "PreTrainOscar",
         add_new_extra_embeds=(not args.oscar_setting),
@@ -281,7 +281,7 @@ def val(args, features_reader, list_iter_no):
     for iter_no in list_iter_no:
         args.model_name_or_path = os.path.join(root_folder, f"checkpoint-{iter_no}")
 
-        model, tokenizer, config = load_oscar_model(
+        model, tokenizer, config = load_oscar_weights(
             args,
             "PreTrainOscar",
             add_new_extra_embeds=(not args.oscar_setting),

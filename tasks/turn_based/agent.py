@@ -66,7 +66,6 @@ class BaseAgent(object):
 
 
 class Agent(BaseAgent):
-    """ An agent based on Oscar model. """
 
     # For now, the agent can't pick which forward move to make - just the one in the middle
     model_actions = [

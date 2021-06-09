@@ -32,7 +32,7 @@ special_tokens_dict = {
 }
 
 
-def load_oscar_model(
+def load_oscar_weights(
     args,
     model_name,
     add_new_extra_embeds=True,

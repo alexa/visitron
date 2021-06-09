@@ -23,7 +23,7 @@ from utils import set_seed
 from utils_data import load_detector_classes, read_tsv_img_features, timeSince
 
 sys.path.insert(0, "/root/mount/Matterport3DSimulator/")
-from get_oscar_model import MODEL_CLASS, load_oscar_model, special_tokens_dict
+from oscar_model import MODEL_CLASS, load_oscar_weights, special_tokens_dict
 from oscar.transformers.pytorch_transformers import (
     BertConfig,
     BertTokenizer,
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 def train(args, features):
-    model, tokenizer, config = load_oscar_model(
+    model, tokenizer, config = load_oscar_weights(
         args,
         "PreTrainOscar",
         add_new_extra_embeds=False,

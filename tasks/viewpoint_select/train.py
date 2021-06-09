@@ -28,7 +28,7 @@ from oscar.transformers.pytorch_transformers import (
     BertConfig,
     BertTokenizer,
 )
-from get_oscar_model import MODEL_CLASS, load_oscar_model, special_tokens_dict
+from oscar_model import MODEL_CLASS, load_oscar_weights, special_tokens_dict
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ TRAINVAL_VOCAB = "tasks/NDH/data/trainval_vocab.txt"
 
 
 def train(args, features):
-    model, tokenizer, config = load_oscar_model(
+    model, tokenizer, config = load_oscar_weights(
         args,
         "PreTrainOscar",
         add_new_extra_embeds=False,

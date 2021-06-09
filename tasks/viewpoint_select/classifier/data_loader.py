@@ -10,7 +10,7 @@ import networkx as nx
 import numpy as np
 import torch
 import utils
-from get_oscar_model import special_tokens_dict
+from oscar_model import special_tokens_dict
 from torch.autograd import Variable
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm

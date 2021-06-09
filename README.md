@@ -110,9 +110,9 @@ As an example, use the following command to run a script.
 ```
 bash run_scripts/viewpoint_train/pretrain_ndh_r2r.sh $MODE
 ```
-where `$MODE` can be from [`cpu`, `single-gpu`, `multi-gpu-dp`, `multi-gpu-ddp`].
+where `$MODE` can be from [`cpu`, `single-gpu 0`, `multi-gpu-dp`, `multi-gpu-ddp`].
 - Use `cpu` to train on CPU.
-- Use `single-gpu` to train on a single GPU.
+- Use `single-gpu 0` to train on a single GPU. To use other GPU, change `0` to another value.
 - Use `multi-gpu-dp` to train on all available GPUs using DataParallel.
 - Use `multi-gpu-ddp` to train on 4 GPUs using DistributedDataParallel. Change `--nproc_per_node` in the script to specify no. of GPUs in DistributedDataParallel mode.
 
