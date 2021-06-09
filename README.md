@@ -84,8 +84,6 @@ Then, to concatenate orientation features to object-level features, use
 python scripts/add_orientation_to_features.py
 ```
 
-Here are the extracted object-level features in pickle format. We stored the features in lmdb format for fast loading.
-#TODO: Add extracted features here.
 
 During finetuning, we use scene-level ResNet features. Download [ResNet features](https://github.com/peteanderson80/Matterport3DSimulator#precomputing-resnet-image-features) from [this link](https://www.dropbox.com/s/o57kxh2mn5rkx4o/ResNet-152-imagenet.zip?dl=1). You can also extract using
 ```
