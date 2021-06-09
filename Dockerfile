@@ -1,3 +1,8 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+# Matterport3DSimulator
+# Requires nvidia gpu with driver 396.37 or higher
+
 FROM nvidia/cudagl:10.2-devel-ubuntu18.04
 ENV TZ=America/New_York
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
@@ -8,8 +13,8 @@ LABEL com.nvidia.cudnn.version="${CUDNN_VERSION}"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libcudnn7=$CUDNN_VERSION-1+cuda10.2 \
-libcudnn7-dev=$CUDNN_VERSION-1+cuda10.2 \
-&& \
+    libcudnn7-dev=$CUDNN_VERSION-1+cuda10.2 \
+    && \
     apt-mark hold libcudnn7 && \
     rm -rf /var/lib/apt/lists/*
 
