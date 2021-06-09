@@ -101,9 +101,6 @@ unzip $MODEL_NAME.zip -d srv/oscar_weights/
 ```
 where `$MODEL_NAME` is `base-vg-labels` and `base-no-labels`.
 
-### Misc
-Copy the [timer script](https://github.com/rbgirshick/fast-rcnn/blob/b612190f279da3c11dd8b1396dd5e72779f8e463/lib/utils/timer.py) to `scripts` folder.
-
 ## Training
 
 We provide pretraining, training and evaluation scripts in `run_scripts/`.
