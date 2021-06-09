@@ -32,7 +32,7 @@ arguments="
 --img_feat_dir srv/img_features
 --img_feature_file ResNet-152-imagenet.tsv
 --data_dir srv/task_data/NDH/data
---model_name_or_path srv/oscar_pretrained_models/base-no-labels/ep_67_588997
+--model_name_or_path srv/oscar_weights/base-no-labels/ep_67_588997
 --output_dir srv/results/viewpoint_select/ndh-only_oscar_mlm
 --feedback_method sample
 --path_type planner_path

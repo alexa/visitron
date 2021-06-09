@@ -93,11 +93,11 @@ python scripts/precompute_resnet_img_features.py
 ```
 
 
-### Oscar setup
-We use [Oscar](https://github.com/microsoft/Oscar) model as the backbone for our VISITRON model. Copy the Oscar pretrained weights using
+### VISITRON initialization
+Before performing navigation-specific pre-training and fine-tuning, we initialize VISITRON with disembodied weights from the [Oscar](https://github.com/microsoft/Oscar) model. Download the Oscar pretrained weights using
 ```
 wget https://biglmdiag.blob.core.windows.net/oscar/pretrained_models/$MODEL_NAME.zip
-unzip $MODEL_NAME.zip -d srv/oscar_pretrained_models/
+unzip $MODEL_NAME.zip -d srv/oscar_weights/
 ```
 where `$MODEL_NAME` is `base-vg-labels` and `base-no-labels`.
 

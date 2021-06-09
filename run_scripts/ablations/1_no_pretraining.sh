@@ -32,7 +32,7 @@ arguments="
 --img_feat_dir srv/img_features
 --img_feature_file ResNet-152-imagenet.tsv
 --data_dir srv/task_data/NDH/data
---model_name_or_path srv/oscar_pretrained_models/base-vg-labels/ep_107_1192087
+--model_name_or_path srv/oscar_weights/base-vg-labels/ep_107_1192087
 --no_pretrained_model
 --output_dir srv/results/viewpoint_select/ndh-no_pretraining
 --feedback_method sample

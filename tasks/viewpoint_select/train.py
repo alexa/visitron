@@ -188,7 +188,7 @@ def val(args, features, list_iter_no):
 
         tokenizer_path = os.path.join(root_folder, f"checkpoint-{iter_no}/")
 
-        tmp_root_folder = "srv/oscar_pretrained_models/base-vg-labels/ep_107_1192087"
+        tmp_root_folder = "srv/oscar_weights/base-vg-labels/ep_107_1192087"
         config_path = os.path.join(tmp_root_folder, "config.json")
 
         config = BertConfig.from_pretrained(config_path)
@@ -374,7 +374,7 @@ def test_submission(args, features, list_iter_no):
         decoder_path = os.path.join(root_folder, f"checkpoint-{iter_no}", "decoder")
         tokenizer_path = os.path.join(root_folder, f"checkpoint-{iter_no}/")
 
-        tmp_root_folder = "srv/oscar_pretrained_models/base-vg-labels/ep_107_1192087"
+        tmp_root_folder = "srv/oscar_weights/base-vg-labels/ep_107_1192087"
         config_path = os.path.join(tmp_root_folder, "config.json")
 
         config = BertConfig.from_pretrained(config_path)

@@ -14,7 +14,7 @@ from utils_data import (
     truncate_dialogs,
 )
 
-model_name_or_path = "srv/oscar_pretrained_models/base-vg-labels/ep_107_1192087"
+model_name_or_path = "srv/oscar_weights/base-vg-labels/ep_107_1192087"
 img_feat_dir = "srv/img_features"
 img_feature_file = "ResNet-101-faster-rcnn-genome-worientation.lmdb"
 splits = ["train"]

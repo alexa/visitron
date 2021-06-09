@@ -49,7 +49,7 @@ def load_oscar_model(
     if config is None:
 
         logger.info("No config exists at this path!!!!")
-        tmp_root_folder = "srv/oscar_pretrained_models/base-vg-labels/ep_107_1192087"
+        tmp_root_folder = "srv/oscar_weights/base-vg-labels/ep_107_1192087"
         config_path = os.path.join(tmp_root_folder, "config.json")
         logger.info(f"Loading config from {config_path}")
 
