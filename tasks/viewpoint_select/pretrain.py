@@ -627,8 +627,6 @@ def main():
         args.n_gpu = 1
     args.device = device
 
-    logger.info(args.slurm_info)
-
     logger.warning(
         "Process rank: %s, device: %s, n_gpu: %s, distributed training: %s, 16-bits training: %s",
         args.local_rank,

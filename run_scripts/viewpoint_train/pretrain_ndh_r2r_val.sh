@@ -6,19 +6,15 @@ multi_gpu_dist_data_parallel="python -m torch.distributed.launch --nproc_per_nod
 case $1 in
     cpu)
         setting="CUDA_VISIBLE_DEVICES=-1 $cpu"
-        slurm_info=$2
         ;;
     single-gpu)
         setting="CUDA_VISIBLE_DEVICES=$2 $single_gpu"
-        slurm_info=$3
         ;;
     multi-gpu-dp)
         setting=$multi_gpu_data_parallel
-        slurm_info=$2
         ;;
     multi-gpu-ddp)
         setting=$multi_gpu_dist_data_parallel
-        slurm_info=$2
         ;;
     *)
     echo Unknown setting, Options: cpu, single-gpu \$GPU_ID, multi-gpu-dp, multi-gpu-ddp. Optionally add SLURM INFO after this.
@@ -53,7 +49,6 @@ arguments="
 --drop_out 0.3
 --seed 88
 --num_workers 0
---slurm_info '$slurm_info'
 "
 
 command_to_run="${setting} ${file} ${arguments}"

@@ -357,12 +357,4 @@ parser.add_argument(
     help="Use this arg for debug purposes",
 )
 
-parser.add_argument(
-    "--slurm_info",
-    default="",
-    type=str,
-    help="SLURM info to print",
-)
-
-
 args = parser.parse_args()
