@@ -15,7 +15,7 @@ from torch import optim
 from torch.autograd import Variable
 from torch.optim import Adam
 
-import model
+import agent_models
 import utils
 
 
@@ -64,8 +64,6 @@ class BaseAgent(object):
 
 
 class Agent(BaseAgent):
-    """ An agent based on Oscar model. """
-
     # For now, the agent can't pick which forward move to make - just the one in the middle
     model_actions = [
         "left",
@@ -109,7 +107,7 @@ class Agent(BaseAgent):
         self.pad_token_id = 0
         # Models
 
-        self.encoder = model.OscarEncoder(
+        self.encoder = agent_models.OscarEncoder(
             args=args,
             bert=bert,
             hidden_size=args.encoder_hidden_size,
@@ -118,7 +116,7 @@ class Agent(BaseAgent):
             bidirectional=args.bidir,
         ).to(args.device)
 
-        self.decoder = model.AttnDecoderLSTM(
+        self.decoder = agent_models.AttnDecoderLSTM(
             args.angle_feat_size,
             args.aemb,
             args.rnn_dim,

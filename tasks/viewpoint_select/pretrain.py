@@ -22,7 +22,7 @@ from utils_data import FeaturesReader, timeSince
 
 sys.path.insert(0, "/root/mount/Matterport3DSimulator/")
 
-from oscar_model import load_oscar_weights
+from model_utils import load_oscar_weights
 from transformers.pytorch_transformers import (
     AdamW,
     WarmupConstantSchedule,

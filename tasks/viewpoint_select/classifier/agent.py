@@ -8,7 +8,7 @@ import sys
 import time
 from collections import OrderedDict
 
-import model
+import agent_models
 import numpy as np
 import torch
 import torch.distributed as dist
@@ -16,8 +16,12 @@ import torch.distributions as D
 import torch.nn as nn
 import torch.nn.functional as F
 import utils
-from sklearn.metrics import (accuracy_score, balanced_accuracy_score, f1_score,
-                             matthews_corrcoef)
+from sklearn.metrics import (
+    accuracy_score,
+    balanced_accuracy_score,
+    f1_score,
+    matthews_corrcoef,
+)
 from torch import optim
 from torch.autograd import Variable
 from torch.optim import Adam
@@ -70,8 +74,6 @@ class BaseAgent(object):
 
 
 class Agent(BaseAgent):
-    """ An agent based on Oscar model. """
-
     # # For now, the agent can't pick which forward move to make - just the one in the middle
     model_actions = [
         "left",
@@ -115,7 +117,7 @@ class Agent(BaseAgent):
         self.pad_token_id = 0
         # Models
 
-        self.encoder = model.OscarEncoder(
+        self.encoder = agent_models.OscarEncoder(
             args=args,
             bert=bert,
             hidden_size=args.encoder_hidden_size,
@@ -124,7 +126,7 @@ class Agent(BaseAgent):
             bidirectional=args.bidir,
         ).to(args.device)
 
-        self.decoder = model.AttnDecoderLSTMwithClassifier(
+        self.decoder = agent_models.AttnDecoderLSTMwithClassifier(
             args.angle_feat_size,
             args.aemb,
             args.rnn_dim,
@@ -154,7 +156,10 @@ class Agent(BaseAgent):
         # Evaluations
         self.losses = []
         self.criterion = nn.BCEWithLogitsLoss(
-            reduction="none", pos_weight=torch.Tensor([self.args.question_asking_class_weight]).to(self.args.device)
+            reduction="none",
+            pos_weight=torch.Tensor([self.args.question_asking_class_weight]).to(
+                self.args.device
+            ),
         )
 
         self.episode_len = episode_len

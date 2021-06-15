@@ -28,7 +28,7 @@ from transformers.pytorch_transformers import (
     BertConfig,
     BertTokenizer,
 )
-from oscar_model import MODEL_CLASS, load_oscar_weights, special_tokens_dict
+from model_utils import MODEL_CLASS, load_oscar_weights, special_tokens_dict
 
 logger = logging.getLogger(__name__)
 

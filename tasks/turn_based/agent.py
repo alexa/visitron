@@ -18,7 +18,7 @@ from torch import optim
 from torch.autograd import Variable
 from torch.optim import Adam
 
-import model
+import agent_models
 
 
 class BaseAgent(object):
@@ -110,7 +110,7 @@ class Agent(BaseAgent):
         # Models
         enc_hidden_size = args.rnn_dim // 2 if args.bidir else args.rnn_dim
 
-        self.encoder = model.OscarEncoder(
+        self.encoder = agent_models.OscarEncoder(
             args=args,
             bert=bert,
             hidden_size=args.encoder_hidden_size,
@@ -119,7 +119,7 @@ class Agent(BaseAgent):
             bidirectional=args.bidir,
         ).to(args.device)
 
-        self.decoder = model.AttnDecoderLSTM(
+        self.decoder = agent_models.AttnDecoderLSTM(
             self.n_inputs(),
             self.n_outputs(),
             args.aemb,

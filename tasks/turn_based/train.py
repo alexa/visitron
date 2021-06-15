@@ -23,7 +23,7 @@ from utils import set_seed
 from utils_data import load_detector_classes, read_tsv_img_features, timeSince
 
 sys.path.insert(0, "/root/mount/Matterport3DSimulator/")
-from oscar_model import MODEL_CLASS, load_oscar_weights, special_tokens_dict
+from model_utils import MODEL_CLASS, load_oscar_weights, special_tokens_dict
 from transformers.pytorch_transformers import (
     BertConfig,
     BertTokenizer,

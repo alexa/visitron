@@ -6,7 +6,7 @@ import os
 
 import torch
 
-from model_oscar import ImageBertForSequenceClassificationwithAction, PreTrainOscar
+from encoder import ImageBertForSequenceClassificationwithAction, PreTrainOscar
 from transformers.pytorch_transformers import BertConfig, BertTokenizer
 from utils_data import load_detector_classes
 
