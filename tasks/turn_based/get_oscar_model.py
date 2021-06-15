@@ -6,7 +6,7 @@ import logging
 import torch
 
 from model_oscar import ImageBertForSequenceClassificationwithAction, PreTrainOscar
-from oscar.transformers.pytorch_transformers import BertConfig, BertTokenizer
+from transformers.pytorch_transformers import BertConfig, BertTokenizer
 from utils_data import load_detector_classes
 
 logger = logging.getLogger(__name__)
