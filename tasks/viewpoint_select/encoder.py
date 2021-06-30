@@ -12,6 +12,7 @@ from torch import nn
 from torch.nn import CrossEntropyLoss
 
 from oscar.modeling_bert import CaptionBertEncoder
+
 from transformers.pytorch_transformers.modeling_bert import (
     BertEmbeddings,
     BertLayerNorm,
