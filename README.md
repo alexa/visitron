@@ -15,44 +15,43 @@ Clone the repo using:
 git clone --recursive https://github.com/alexa/visitron.git
 ```
 
-### Matterport3D dataset and simulator
-This codebase uses the [Matterport3D Simulator](https://github.com/peteanderson80/Matterport3DSimulator). Detailed instructions on how to setup the simulator and how to preprocess the Matterport3D data for faster simulator performance are present here: [Matterport3DSimulator_README](https://github.com/mmurray/cvdn/blob/master/README_Matterport3DSimulator.md). We provide the docker setup for ease of setup for the simulator.
+### Matterport3D Dataset and Simulator
+This codebase uses the [Matterport3D Simulator](https://github.com/peteanderson80/Matterport3DSimulator). Detailed instructions on how to setup the simulator and how to preprocess the Matterport3D data for faster simulator performance are present here: [Matterport3DSimulator_README](https://github.com/mmurray/cvdn/blob/master/README_Matterport3DSimulator.md). We provide the Docker setup for ease of setup for the simulator.
 
 We assume that the Matterport3D is present at `$MATTERPORT_DATA_DIR` which can be set using:
 ```
 export MATTERPORT_DATA_DIR=<PATH_TO_MATTERPORT_DATASET>
 ```
 
-### Docker setup
+### Docker Setup
 
-Build the docker image:
+Build the Docker image:
 ```
 docker build -t mattersim:visitron .
 ```
 
-To run the docker container and mount the codebase and the Matterport3D dataset, use:
+To run the Docker container and mount the codebase and the Matterport3D dataset, use:
 ```
 nvidia-docker run -it --ipc=host --cpuset-cpus="$(taskset -c -p $$ | cut -f2 -d ':' | awk '{$1=$1};1')" --volume `pwd`:/root/mount/Matterport3DSimulator --mount type=bind,source=$MATTERPORT_DATA_DIR,target=/root/mount/Matterport3DSimulator/data/v1/scans,readonly mattersim:visitron
 ```
 
-### Task data setup
-VISITRON is pretrained on [NDH](https://github.com/mmurray/cvdn) and [R2R](https://github.com/peteanderson80/Matterport3DSimulator/tree/master/tasks/R2R), and then finetuned on NDH and [RxR](https://github.com/google-research-datasets/RxR). Download these task data as follows.
+### Task Data Setup
 
-#### NDH, R2R data :
+#### NDH and R2R
 
 ```
 mkdir -p srv/task_data
 bash scripts/download_ndh_r2r_data.sh
 ```
 
-#### RxR data :
+#### RxR
 
 Refer to [RxR repo](https://github.com/google-research-datasets/RxR#dataset-download) for its setup and copy the data to `srv/task_data/RxR/data` folder.
 
 
-### Pretraining data
+### Pre-training
 
-Inside the docker container, run these commands to generate pretraining data.
+Inside the docker container, run these commands to generate pre-training data.
 
 For NDH, run
 ```
@@ -67,9 +66,9 @@ By default, this script starts 8 multiprocessing threads to speed up its executi
 
 
 
-### Image features
+### Image Features
 
-Our pretraining approach requires object-level features from Faster RCNN concatenated with orientation features.
+Our pre-training approach requires object-level features from Faster R-CNN concatenated with orientation features.
 
 First, follow the setup from the [bottom-up attention repo](https://github.com/peteanderson80/bottom-up-attention) inside a docker container to install Caffe. Note that the code from bottom-up attention repo requires python2.
 
@@ -85,14 +84,14 @@ python scripts/add_orientation_to_features.py
 ```
 
 
-During finetuning, we use scene-level ResNet features. Download [ResNet features](https://github.com/peteanderson80/Matterport3DSimulator#precomputing-resnet-image-features) from [this link](https://www.dropbox.com/s/o57kxh2mn5rkx4o/ResNet-152-imagenet.zip?dl=1). You can also extract using
+During fine-tuning, we use scene-level ResNet features. Download [ResNet features](https://github.com/peteanderson80/Matterport3DSimulator#precomputing-resnet-image-features) from [this link](https://www.dropbox.com/s/o57kxh2mn5rkx4o/ResNet-152-imagenet.zip?dl=1). You can also extract using
 ```
 python scripts/precompute_resnet_img_features.py
 ```
 
 
-### VISITRON initialization
-Before performing navigation-specific pre-training and fine-tuning, we initialize VISITRON with disembodied weights from the [Oscar](https://github.com/microsoft/Oscar) model. Download the Oscar pretrained weights using
+### VISITRON Initialization
+Before performing navigation-specific pre-training and fine-tuning, we initialize VISITRON with disembodied weights from the [Oscar](https://github.com/microsoft/Oscar) model. Download the Oscar pre-trained weights using
 ```
 wget https://biglmdiag.blob.core.windows.net/oscar/pretrained_models/$MODEL_NAME.zip
 unzip $MODEL_NAME.zip -d srv/oscar_weights/
@@ -101,7 +100,7 @@ where `$MODEL_NAME` is `base-vg-labels` and `base-no-labels`.
 
 ## Training
 
-We provide pretraining, training and evaluation scripts in `run_scripts/`.
+We provide pre-training, training and evaluation scripts in `run_scripts/`.
 
 As an example, use the following command to run a script.
 
