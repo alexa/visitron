@@ -9,7 +9,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from oscar.oscar import CaptionBertEncoder
+from oscar.modeling_bert import CaptionBertEncoder
 from transformers.pytorch_transformers.modeling_bert import (
     BertEmbeddings,
     BertLayerNorm,
