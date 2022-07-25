@@ -4,7 +4,9 @@
 
 Ayush Shrivastava, Karthik Gopalakrishnan, Yang Liu, Robinson Piramuthu, Gokhan Tür, Devi Parikh, Dilek Hakkani-Tür
 
-Accepted to NAACL 2021, Visually Grounded Interaction and Language (ViGIL) Workshop
+Accepted to:
+1. Findings of ACL 2022
+2. NAACL 2021, Visually Grounded Interaction and Language (ViGIL) Workshop
 
 ![VISITRON](visitron.png)
 
@@ -150,11 +152,12 @@ This library is licensed under the MIT-0 License. See the LICENSE file.
 
 ## Citation:
 ```
-@inproceedings{visitron,
-  title={VISITRON: Visual Semantics-aligned Interactively Trained Object-Navigator},
-  author={Ayush Shrivastava, Karthik Gopalakrishnan, Yang Liu, Robinson Piramuthu, Gokhan T\"{u}r, Devi Parikh, Dilek Hakkani-T\"{u}r},
-  booktitle={NAACL 2021, Visually Grounded Interaction and Language (ViGIL) Workshop},
-  year={2021}
+@inproceedings{shrivastava2022visitron,
+  title={VISITRON: Visual Semantics-Aligned Interactively Trained Object-Navigator},
+  author={Shrivastava, Ayush and Gopalakrishnan, Karthik and Liu, Yang and Piramuthu, Robinson and T{\"u}r, G{\"o}khan and Parikh, Devi and Hakkani-Tur, Dilek},
+  booktitle={Findings of the Association for Computational Linguistics: ACL 2022},
+  pages={1984--1994},
+  year={2022}
 }
 ```
 
